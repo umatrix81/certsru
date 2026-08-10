@@ -5,8 +5,31 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 /// Manage name-constrained cross-certificates for third-party CAs.
+///
+/// Trusting a third-party CA normally lets it vouch for any hostname.
+/// This narrows it: the CA's root is re-issued under a locally generated
+/// root carrying an X.509 nameConstraints extension, and only the local
+/// root is trusted.
+///
+/// First run, in this order:
+///
+///   rucerts init --cn "My Root"      create the local root
+///   rucerts ca add <root.cer>        the CA to constrain
+///   rucerts domain add example.com   what it may vouch for
+///   rucerts verify                   prove it before trusting it
+///
+/// Then install: run install-certs.cmd, or install-certs.ps1 from
+/// PowerShell with -ExecutionPolicy Bypass.
+///
+/// Afterwards, domain and ca are the commands you reach for; each
+/// re-signs and regenerates the installable files on its own.
 #[derive(Debug, Parser)]
-#[command(name = "rucerts", version, about, long_about = None)]
+#[command(name = "rucerts", version, about, verbatim_doc_comment)]
+#[expect(
+    clippy::doc_markdown,
+    reason = "verbatim_doc_comment renders this as terminal help, so backticks and other \
+              markdown would be shown to the user literally rather than formatted"
+)]
 pub struct Cli {
     /// Workspace directory holding roots/, constrained/ and rucerts.toml.
     #[arg(long, global = true)]
@@ -22,38 +45,42 @@ pub struct Cli {
 }
 
 /// Top level commands.
+///
+/// Declaration order is what clap prints, so these are ordered as a first run proceeds:
+/// create the root, add the CA, permit domains, verify. `ca` must precede `domain` --
+/// there is nothing to sign against until a CA exists. Maintenance commands follow.
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Create a local root and configuration in an empty workspace.
+    /// 1. Create a local root and configuration in an empty workspace.
     Init {
         /// Common Name for the local root.
         #[arg(long, default_value = "!Root to bypass Russian certificates")]
         cn: String,
     },
-    /// Manage the permitted domain list.
-    Domain {
-        /// Domain operation.
-        #[command(subcommand)]
-        action: DomainAction,
-    },
-    /// Manage the foreign CA roots being constrained.
+    /// 2. Manage the foreign CA roots being constrained.
     Ca {
         /// CA operation.
         #[command(subcommand)]
         action: CaAction,
     },
-    /// Manage the local root.
+    /// 3. Manage the permitted domain list.
+    Domain {
+        /// Domain operation.
+        #[command(subcommand)]
+        action: DomainAction,
+    },
+    /// 4. Audit the generated cross-certificates.
+    Verify,
+    /// Re-sign every cross-certificate without changing the domain list.
+    Resign,
+    /// Regenerate the installable artifacts without re-signing.
+    Artifacts,
+    /// Rename or replace the local root.
     Root {
         /// Root operation.
         #[command(subcommand)]
         action: RootAction,
     },
-    /// Re-sign every cross-certificate without changing the domain list.
-    Resign,
-    /// Regenerate the installable artifacts without re-signing.
-    Artifacts,
-    /// Audit the generated cross-certificates.
-    Verify,
 }
 
 /// Operations on the permitted domain list.
