@@ -137,9 +137,16 @@ fn restrict_key_permissions(path: &Path) -> Result<Option<String>> {
 /// its holder issue certificates for every permitted domain.
 #[cfg(not(unix))]
 fn restrict_key_permissions(path: &Path) -> Result<Option<String>> {
+    // The account must be interpolated by PowerShell, not passed as the literal
+    // %USERNAME%, which only cmd.exe expands. The subexpression form is required too:
+    // "$env:USERNAME:F" parses the trailing :F as part of the variable path.
+    //
+    // Full control rather than read: the owner still has to be able to replace this file,
+    // and `rucerts root set-cn` rewrites it. Removing inheritance is what makes it private.
     Ok(Some(format!(
         "note: {} inherits its folder's permissions. If this workspace is not somewhere \
-         only you can read, restrict it with:\n      icacls \"{}\" /inheritance:r /grant:r \"%USERNAME%:R\"",
+         only you can read, restrict it in PowerShell with:\n      \
+         icacls \"{}\" /inheritance:r /grant:r \"$($env:USERNAME):F\"",
         path.display(),
         path.display()
     )))
