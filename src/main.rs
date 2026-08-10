@@ -136,6 +136,11 @@ fn restrict_key_permissions(path: &Path) -> Result<Option<String>> {
 /// owner-only, but a workspace on a shared drive would not be, and this key is what lets
 /// its holder issue certificates for every permitted domain.
 #[cfg(not(unix))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "this variant cannot fail, but its signature has to match the unix one, \
+              which can: std::fs::set_permissions returns a Result"
+)]
 fn restrict_key_permissions(path: &Path) -> Result<Option<String>> {
     // The account must be interpolated by PowerShell, not passed as the literal
     // %USERNAME%, which only cmd.exe expands. The subexpression form is required too:
