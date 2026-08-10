@@ -60,14 +60,21 @@ fn run() -> Result<()> {
         Command::Verify => {
             let cfg = Config::load(ws.dir())?;
             let roots = roots::list(&ws)?;
-            anyhow::ensure!(!roots.is_empty(), "no roots in roots/ -- add one with `rucerts ca add`");
+            anyhow::ensure!(
+                !roots.is_empty(),
+                "no roots in roots/ -- add one with `rucerts ca add`"
+            );
             let report = verify::run(&ws, &cfg, &roots)?;
             println!("\nResult");
             if report.failed == 0 {
                 println!("  all {} checks passed", report.passed);
                 Ok(())
             } else {
-                anyhow::bail!("{} of {} checks failed", report.failed, report.passed + report.failed)
+                anyhow::bail!(
+                    "{} of {} checks failed",
+                    report.failed,
+                    report.passed + report.failed
+                )
             }
         }
     }
@@ -171,9 +178,15 @@ fn domain(ws: &Workspace, action: &DomainAction, no_artifacts: bool) -> Result<(
             let mut changed = false;
             for raw in domains {
                 let host = host_of(raw);
-                let Some(pos) = cfg.constraints.permitted_dns.iter().position(|d| *d == host)
+                let Some(pos) = cfg
+                    .constraints
+                    .permitted_dns
+                    .iter()
+                    .position(|d| *d == host)
                 else {
-                    println!("skip   {host} (not an exact entry; remove the subtree parent by name)");
+                    println!(
+                        "skip   {host} (not an exact entry; remove the subtree parent by name)"
+                    );
                     continue;
                 };
                 anyhow::ensure!(
@@ -227,7 +240,10 @@ fn ca(ws: &Workspace, action: &CaAction, no_artifacts: bool) -> Result<()> {
             }
             for root in list {
                 println!("{}", root.name);
-                println!("    subject : {}", subject_cn(&root.cert).unwrap_or_default());
+                println!(
+                    "    subject : {}",
+                    subject_cn(&root.cert).unwrap_or_default()
+                );
                 println!("    expires : {}", root.cert.not_after());
                 println!(
                     "    key     : {}...",
@@ -236,7 +252,11 @@ fn ca(ws: &Workspace, action: &CaAction, no_artifacts: bool) -> Result<()> {
                 let cross = ws.cross_cert(&root.name);
                 if cross.exists() {
                     let c = load_cert(&cross)?;
-                    println!("    cross   : {} (expires {})", cross.display(), c.not_after());
+                    println!(
+                        "    cross   : {} (expires {})",
+                        cross.display(),
+                        c.not_after()
+                    );
                 } else {
                     println!("    cross   : MISSING -- run `rucerts resign`");
                 }
@@ -306,7 +326,10 @@ fn root(ws: &Workspace, action: &RootAction, no_artifacts: bool) -> Result<()> {
 
     if ws.root_cert().exists() {
         let current = load_cert(&ws.root_cert())?;
-        println!("current root : {}", subject_cn(&current).unwrap_or_default());
+        println!(
+            "current root : {}",
+            subject_cn(&current).unwrap_or_default()
+        );
     }
     println!("new root     : {cn}");
     println!("\nThis mints a new key pair and re-signs every cross-certificate.");
@@ -324,7 +347,9 @@ fn root(ws: &Workspace, action: &RootAction, no_artifacts: bool) -> Result<()> {
     let advisory = write_root(ws, &cert, &key)?;
 
     resign_and_stage(ws, &cfg, no_artifacts)?;
-    println!("\nRe-import required. The OLD root is now orphaned; delete it wherever it was trusted.");
+    println!(
+        "\nRe-import required. The OLD root is now orphaned; delete it wherever it was trusted."
+    );
     if let Some(note) = advisory {
         println!("\n{note}");
     }
@@ -374,7 +399,11 @@ fn resign_and_stage(ws: &Workspace, cfg: &Config, no_artifacts: bool) -> Result<
         let path = ws.cross_cert(&root.name);
         std::fs::write(&path, cross.to_pem().context("encoding cross-certificate")?)
             .with_context(|| format!("writing {}", path.display()))?;
-        println!("signed {} (SKI {})", path.display(), after.unwrap_or_default());
+        println!(
+            "signed {} (SKI {})",
+            path.display(),
+            after.unwrap_or_default()
+        );
     }
 
     stage_only(ws, no_artifacts)
@@ -422,7 +451,10 @@ fn confirm() -> Result<bool> {
     io::stdout().flush().context("flushing prompt")?;
     let mut line = String::new();
     io::stdin().read_line(&mut line).context("reading reply")?;
-    Ok(matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
+    Ok(matches!(
+        line.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }
 
 /// Returns a filesystem-safe timestamp for backup directory names.

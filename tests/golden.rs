@@ -10,23 +10,31 @@
 
 use std::path::{Path, PathBuf};
 
+use openssl::x509::X509;
 use rucerts::config::Config;
 use rucerts::x509::{cross_sign, load_cert, load_key, permitted_dns, ski_hex};
-use openssl::x509::X509;
 
 fn workspace() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf()
 }
 
 /// Loads the live root, its key, the original CA root and the installed cross-certificate.
-fn live_artifacts() -> Option<(X509, openssl::pkey::PKey<openssl::pkey::Private>, X509, X509)> {
+fn live_artifacts() -> Option<(
+    X509,
+    openssl::pkey::PKey<openssl::pkey::Private>,
+    X509,
+    X509,
+)> {
     let w = workspace();
     let root = w.join("myroot.pem");
     let key = w.join("myroot.key");
     let original = w.join("roots/russian_trusted_root_ca.cer");
     let installed = w.join("constrained/russian_trusted_root_ca.pem");
 
-    if ![&root, &key, &original, &installed].iter().all(|p| p.exists()) {
+    if ![&root, &key, &original, &installed]
+        .iter()
+        .all(|p| p.exists())
+    {
         return None;
     }
     Some((
@@ -134,7 +142,11 @@ fn subject_key_identifier_is_preserved() {
     )
     .expect("cross-sign");
 
-    assert_eq!(ski_hex(&fresh), ski_hex(&original), "SKI must match original");
+    assert_eq!(
+        ski_hex(&fresh),
+        ski_hex(&original),
+        "SKI must match original"
+    );
     assert_eq!(
         ski_hex(&fresh),
         ski_hex(&installed),

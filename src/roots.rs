@@ -153,12 +153,7 @@ pub fn retire(ws: &Workspace, name: &str) -> Result<()> {
 
     let retired = ws.retired_dir();
     fs::create_dir_all(&retired).with_context(|| format!("creating {}", retired.display()))?;
-    let dest = retired.join(
-        target
-            .path
-            .file_name()
-            .context("root has no file name")?,
-    );
+    let dest = retired.join(target.path.file_name().context("root has no file name")?);
     fs::rename(&target.path, &dest)
         .with_context(|| format!("moving {} aside", target.path.display()))?;
 
@@ -197,7 +192,10 @@ mod tests {
 
     #[test]
     fn names_are_reduced_to_safe_characters() {
-        assert_eq!(sanitise_name("russian_trusted_root_ca"), "russian_trusted_root_ca");
+        assert_eq!(
+            sanitise_name("russian_trusted_root_ca"),
+            "russian_trusted_root_ca"
+        );
         assert_eq!(sanitise_name("root 2027 (new)"), "root_2027__new_");
         assert_eq!(sanitise_name("../../etc/passwd"), ".._.._etc_passwd");
     }

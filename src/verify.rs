@@ -69,7 +69,15 @@ pub fn run(ws: &Workspace, cfg: &Config, roots: &[ForeignRoot]) -> Result<Report
 
     println!("\n3. Negative control -- same leaf, names removed from the constraint");
     if let Some((leaf, intermediate)) = probe_material {
-        negative_control(ws, cfg, roots, &root_cert, &leaf, &intermediate, &mut report)?;
+        negative_control(
+            ws,
+            cfg,
+            roots,
+            &root_cert,
+            &leaf,
+            &intermediate,
+            &mut report,
+        )?;
     } else {
         report.skip("no reachable domain used these CAs, cannot run the negative control");
         println!(
@@ -81,7 +89,10 @@ pub fn run(ws: &Workspace, cfg: &Config, roots: &[ForeignRoot]) -> Result<Report
     println!("\n4. Competing trust paths for the original roots");
     for root in roots {
         let name = crate::x509::subject_cn(&root.cert).unwrap_or_else(|| root.name.clone());
-        println!("  '{name}' SHA256 {}", crate::x509::fingerprint(&root.cert)?);
+        println!(
+            "  '{name}' SHA256 {}",
+            crate::x509::fingerprint(&root.cert)?
+        );
     }
     println!("  Windows stores: run install-certs.ps1 -- it scans CurrentUser and LocalMachine");
     println!("  Firefox: about:preferences#privacy > View Certificates > Authorities");
@@ -144,7 +155,10 @@ fn inspect(
                 reference = Some(permitted);
             }
             Some(first) if *first == permitted => {
-                report.pass(&format!("{} permits the same list as the others", root.name));
+                report.pass(&format!(
+                    "{} permits the same list as the others",
+                    root.name
+                ));
             }
             Some(_) => report.fail(&format!(
                 "{} permits a different list -- the effective policy is their union",
@@ -249,9 +263,8 @@ fn negative_control(
             "leaf was rejected, but for the wrong reason: {reason}. The constraint may not \
              be what stopped it."
         )),
-        Verdict::Valid => report.fail(
-            "leaf still accepted with its names removed -- constraints are NOT enforced",
-        ),
+        Verdict::Valid => report
+            .fail("leaf still accepted with its names removed -- constraints are NOT enforced"),
     }
     Ok(())
 }

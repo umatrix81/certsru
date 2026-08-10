@@ -89,9 +89,7 @@ impl Workspace {
             if !src.exists() {
                 continue;
             }
-            let name = src
-                .file_name()
-                .context("backup source has no file name")?;
+            let name = src.file_name().context("backup source has no file name")?;
             fs::copy(src, dir.join(name))
                 .with_context(|| format!("copying {} into backup", src.display()))?;
         }

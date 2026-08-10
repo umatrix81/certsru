@@ -6,7 +6,9 @@
 //!   manual Firefox import.
 //! - `constrained-ca-policy.reg`, applying `CACertificatesWithConstraints` to the
 //!   *original* roots. Chrome and Edge need no cross-certificate at all.
-//! - `install-certs.ps1` with the certificates embedded, so it can be shared as one file.
+//! - `install-certs.ps1` with the certificates embedded, so it can be shared as one file,
+//!   plus `install-certs.cmd`, a double-clickable wrapper that gets past the default
+//!   execution policy without changing it.
 //!
 //! The PowerShell template is compiled into this binary rather than read from disk, so the
 //! generated installer cannot overwrite its own source and no template file has to travel
@@ -40,6 +42,9 @@ const EMBED_MARKER: &str = "#<<<EMBEDDED>>>";
 
 /// The PowerShell installer, compiled in so it needs no companion file at runtime.
 const INSTALLER_TEMPLATE: &str = include_str!("../templates/install-certs.ps1");
+
+/// Double-clickable wrapper that runs the installer past the default execution policy.
+const INSTALLER_CMD: &str = include_str!("../templates/install-certs.cmd");
 
 /// Line width for embedded base64, matching PEM convention.
 const B64_WRAP: usize = 76;
@@ -163,7 +168,10 @@ fn write_policy(dir: &Path, entries: &[(String, X509, X509, Vec<String>)]) -> Re
         );
     }
 
-    let mut lines = vec!["Windows Registry Editor Version 5.00".to_owned(), String::new()];
+    let mut lines = vec![
+        "Windows Registry Editor Version 5.00".to_owned(),
+        String::new(),
+    ];
     for vendor in [r"Google\Chrome", r"Microsoft\Edge"] {
         lines.push(format!(
             r"[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\{vendor}\CACertificatesWithConstraints]"
@@ -214,8 +222,19 @@ fn write_installer(
     // UTF-8 with BOM and CRLF: Windows PowerShell 5.1 assumes the ANSI code page for a
     // BOM-less file, which mangles a non-ASCII root Common Name.
     let mut bytes = vec![0xEF, 0xBB, 0xBF];
-    bytes.extend_from_slice(filled.replace("\r\n", "\n").replace('\n', "\r\n").as_bytes());
-    fs::write(&path, bytes).with_context(|| format!("writing {}", path.display()))
+    bytes.extend_from_slice(to_crlf(&filled).as_bytes());
+    fs::write(&path, bytes).with_context(|| format!("writing {}", path.display()))?;
+
+    // The wrapper carries no BOM: cmd.exe would try to execute those bytes as part of the
+    // first line. It is plain ASCII, so none is needed.
+    let cmd_path = dir.join("install-certs.cmd");
+    fs::write(&cmd_path, to_crlf(INSTALLER_CMD).as_bytes())
+        .with_context(|| format!("writing {}", cmd_path.display()))
+}
+
+/// Normalises line endings to CRLF, which both PowerShell and `cmd.exe` expect.
+fn to_crlf(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\n', "\r\n")
 }
 
 /// Renders one PowerShell hashtable literal holding a certificate.
@@ -228,7 +247,9 @@ fn embed_entry(name: &str, kind: &str, cert: &X509) -> Result<String> {
         .map(|c| String::from_utf8_lossy(c).into_owned())
         .collect::<Vec<_>>()
         .join("\n");
-    Ok(format!("@{{Name='{name}';Kind='{kind}';B64=@'\n{wrapped}\n'@}}"))
+    Ok(format!(
+        "@{{Name='{name}';Kind='{kind}';B64=@'\n{wrapped}\n'@}}"
+    ))
 }
 
 #[cfg(test)]

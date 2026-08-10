@@ -315,7 +315,9 @@ pub fn pubkey_fingerprint(cert: &X509) -> Result<String> {
 /// # Errors
 /// If the certificate cannot be hashed.
 pub fn fingerprint(cert: &X509) -> Result<String> {
-    let digest = cert.digest(MessageDigest::sha256()).context("hashing cert")?;
+    let digest = cert
+        .digest(MessageDigest::sha256())
+        .context("hashing cert")?;
     Ok(hex(&digest, true))
 }
 

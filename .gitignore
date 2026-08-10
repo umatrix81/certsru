@@ -26,6 +26,7 @@
 # Installable artifacts. Anchored to the root so that the installer *source*,
 # templates/install-certs.ps1, stays tracked.
 /install-certs.ps1
+/install-certs.cmd
 /constrained-ca-policy.reg
 /myroot.crt
 /*-constrained.crt
@@ -35,6 +36,6 @@
 # Deliberately tracked, for the record:
 #   rucerts.toml   the permitted-domain list, the meaningful configuration
 #   roots/         public CA certificates, the inputs being constrained
-#   templates/     the PowerShell installer source
+#   templates/     the installer source (.ps1) and its .cmd wrapper
 #   src/ tests/ Cargo.toml Cargo.lock README.md
 #   legacy/        the superseded shell implementation

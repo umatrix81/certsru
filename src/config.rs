@@ -127,11 +127,10 @@ impl Config {
         if renamed.exists() {
             let text = fs::read_to_string(&renamed)
                 .with_context(|| format!("reading {}", renamed.display()))?;
-            let cfg: Self = toml::from_str(&text)
-                .with_context(|| format!("parsing {}", renamed.display()))?;
+            let cfg: Self =
+                toml::from_str(&text).with_context(|| format!("parsing {}", renamed.display()))?;
             cfg.save(dir)?;
-            fs::remove_file(&renamed)
-                .with_context(|| format!("removing {}", renamed.display()))?;
+            fs::remove_file(&renamed).with_context(|| format!("removing {}", renamed.display()))?;
             eprintln!("migrated certsru.toml -> rucerts.toml");
             return Ok(cfg);
         }

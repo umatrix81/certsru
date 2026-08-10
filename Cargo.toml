@@ -7,8 +7,8 @@ publish = false
 
 [features]
 # Build OpenSSL from source and link it statically instead of using the system library.
-# Required on Windows, which ships no system OpenSSL; optional elsewhere. Building it
-# needs a C compiler, perl and nasm on PATH.
+# Windows enables this automatically (see the target section below); elsewhere it is
+# opt-in. Building it needs a C compiler, perl and nasm on PATH.
 vendored = ["openssl/vendored"]
 
 [dependencies]
@@ -23,6 +23,13 @@ serde = { version = "1", features = ["derive"] }
 # implementation produced, so an upgrade can be verified by diffing.
 serde_json = { version = "1", features = ["preserve_order"] }
 toml = "0.8"
+
+# Windows ships no system OpenSSL, so it is always built from source there. Declaring it
+# per-target rather than as a flag keeps the feature set identical on every invocation:
+# alternating `cargo build` with `cargo build --features vendored` changes the fingerprint
+# and forces OpenSSL to rebuild each time.
+[target.'cfg(windows)'.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
 
 [lints.rust]
 ambiguous_negative_literals = "warn"

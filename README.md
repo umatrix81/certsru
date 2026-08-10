@@ -57,7 +57,7 @@ for system-wide trust. Both mechanisms are generated here; pick one.
 | `rucerts.toml` | Permitted domains and signing parameters |
 | `myroot.pem` / `myroot.key` | Local root. **The key is the crown jewel.** |
 | `src/`, `tests/`, `Cargo.toml` | The `rucerts` tool |
-| `templates/` | The PowerShell installer source, compiled into the binary |
+| `templates/` | Installer source (`.ps1`) and its `.cmd` wrapper, compiled into the binary |
 | `backup-*/` | Automatic backups from `rucerts root set-cn` |
 | `legacy/` | The superseded shell implementation, kept for reference |
 
@@ -66,13 +66,14 @@ Generated into the workspace, ready to install or share:
 | File | Use |
 |---|---|
 | `install-certs.ps1` | **Self-contained** — certificates embedded, share this alone |
+| `install-certs.cmd` | Double-clickable wrapper; send it alongside the `.ps1` |
 | `myroot.crt` | Local root, for manual Firefox import |
 | `*-constrained.crt` | Cross-certificates, for manual Firefox import |
 | `*-original.crt` | Untouched originals, used for the safety check |
 | `constrained-ca-policy.reg` | Chrome/Edge policy, uses the *original* root |
 
 These are outputs: every one is rewritten from the certificates on each run, so edits to
-them are lost. Edit `templates/install-certs.ps1` and rebuild to change the installer.
+them are lost. Edit the files in `templates/` and rebuild to change the installer.
 
 ---
 
@@ -163,6 +164,22 @@ rucerts domain add example.com
 
 ### Install on Windows — `install-certs.ps1`
 
+Windows client machines default to a `Restricted` execution policy, so a `.ps1` cannot be
+started by double-clicking it. `install-certs.cmd` exists for that: `.cmd` files are not
+policy-gated, and it invokes PowerShell with `-ExecutionPolicy Bypass` for that one
+process, leaving the machine's policy alone. It also clears the zone marker that files
+arriving by browser, mail or network share carry.
+
+Double-clicked with no arguments it prints the certificates and thumbprints, then asks
+before installing. Arguments pass straight through, so `install-certs.cmd -Machine` and
+`install-certs.cmd -Uninstall` behave like the `.ps1` equivalents.
+
+Running the `.ps1` directly still requires:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-certs.ps1
+```
+
 ```powershell
 .\install-certs.ps1 -ShowOnly              # print certs + thumbprints, install nothing
 .\install-certs.ps1                        # install into CurrentUser
@@ -181,6 +198,13 @@ Certificates it installs are tagged via `FriendlyName` (`[constrained-ru]`), so
 re-running finds and replaces its own earlier copies even after the root's CN
 has changed. It aborts if a cross-certificate's issuer doesn't match the root,
 and if an **unconstrained** original is trusted anywhere.
+
+Windows raises its own warning dialog when a root certificate is added to
+`CurrentUser\Root`. That prompt is the operating system asking whether you really mean to
+grant a new trust anchor authority over your browsing, and it cannot be suppressed — nor
+should it be. Installing with `-Machine` from an elevated shell writes to
+`LocalMachine\Root` without it, but trades it for a UAC prompt: the same consent, asked
+once instead of once per user.
 
 ---
 
