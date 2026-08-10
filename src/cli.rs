@@ -27,7 +27,7 @@ pub enum Command {
     /// Create a local root and configuration in an empty workspace.
     Init {
         /// Common Name for the local root.
-        #[arg(long, default_value = "Local Constraining Root")]
+        #[arg(long, default_value = "!Root to bypass Russian certificates")]
         cn: String,
     },
     /// Manage the permitted domain list.
