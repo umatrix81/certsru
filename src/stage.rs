@@ -1,14 +1,17 @@
 //! Produces the installable artifacts: certificate copies, policy and installer.
 //!
-//! Three things are written into the workspace:
+//! Two things are written into the workspace:
 //!
-//! - `myroot.crt` plus `<name>-original.crt` / `<name>-constrained.crt` per root, for the
-//!   manual Firefox import.
-//! - `constrained-ca-policy.reg`, applying `CACertificatesWithConstraints` to the
-//!   *original* roots. Chrome and Edge need no cross-certificate at all.
 //! - `install-certs.ps1` with the certificates embedded, so it can be shared as one file,
 //!   plus `install-certs.cmd`, a double-clickable wrapper that gets past the default
 //!   execution policy without changing it.
+//! - `constrained-ca-policy.reg`, applying `CACertificatesWithConstraints` to the
+//!   *original* roots. Chrome and Edge need no cross-certificate at all.
+//!
+//! Loose `.crt` copies are deliberately not written. They duplicated `myroot.pem`,
+//! `constrained/*.pem` and `roots/*` byte for byte, and every one of them is already
+//! embedded in the installer -- `install-certs.ps1 -Export <dir>` writes them out when
+//! Firefox needs files to import.
 //!
 //! The PowerShell template is compiled into this binary rather than read from disk, so the
 //! generated installer cannot overwrite its own source and no template file has to travel
@@ -49,12 +52,15 @@ const INSTALLER_CMD: &str = include_str!("../templates/install-certs.cmd");
 /// Line width for embedded base64, matching PEM convention.
 const B64_WRAP: usize = 76;
 
-/// Files written by earlier, single-root versions of this tool.
+/// Files written by earlier versions of this tool, no longer produced.
 ///
-/// Removed on every staging run so a stale copy cannot be imported by mistake.
-const LEGACY_FILES: [&str; 2] = [
+/// `myroot.crt` and the per-root `.crt` copies duplicated files already in the workspace
+/// and are all recoverable with `install-certs.ps1 -Export`. They are deleted on every run
+/// so a stale copy cannot be imported by mistake.
+const LEGACY_FILES: [&str; 3] = [
     "russian-root-constrained.crt",
     "russian_trusted_root_ca.crt",
+    "myroot.crt",
 ];
 
 /// What a generation run produced.
@@ -79,8 +85,6 @@ pub fn stage(ws: &Workspace, roots: &[ForeignRoot]) -> Result<Staged> {
     clean_stale(dir)?;
 
     let root_cert = load_cert(&ws.root_cert())?;
-    write_pem(&root_cert, &dir.join("myroot.crt"))?;
-
     let mut entries = Vec::new();
     let mut domains: Option<Vec<String>> = None;
 
@@ -108,8 +112,6 @@ pub fn stage(ws: &Workspace, roots: &[ForeignRoot]) -> Result<Staged> {
             ),
         }
 
-        write_pem(&root.cert, &dir.join(format!("{}-original.crt", root.name)))?;
-        write_pem(&cross, &dir.join(format!("{}-constrained.crt", root.name)))?;
         entries.push((root.name.clone(), root.cert.clone(), cross, permitted));
     }
 
@@ -142,12 +144,6 @@ fn clean_stale(dir: &Path) -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// Writes a certificate as PEM.
-fn write_pem(cert: &X509, path: &Path) -> Result<()> {
-    let pem = cert.to_pem().context("encoding certificate")?;
-    fs::write(path, pem).with_context(|| format!("writing {}", path.display()))
 }
 
 /// Writes the Chrome and Edge policy file.

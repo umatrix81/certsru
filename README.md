@@ -67,10 +67,15 @@ Generated into the workspace, ready to install or share:
 |---|---|
 | `install-certs.ps1` | **Self-contained** — certificates embedded, share this alone |
 | `install-certs.cmd` | Double-clickable wrapper; send it alongside the `.ps1` |
-| `myroot.crt` | Local root, for manual Firefox import |
-| `*-constrained.crt` | Cross-certificates, for manual Firefox import |
-| `*-original.crt` | Untouched originals, used for the safety check |
 | `constrained-ca-policy.reg` | Chrome/Edge policy, uses the *original* root |
+
+Three files, not a directory full of them. Loose `.crt` copies are deliberately not
+written: they duplicated `myroot.pem`, `constrained/*.pem` and `roots/*` byte for byte,
+and all of them are already inside the installer. When Firefox needs files to import:
+
+```powershell
+.\install-certs.ps1 -Export .\certs
+```
 
 These are outputs: every one is rewritten from the certificates on each run, so edits to
 them are lost. Edit the files in `templates/` and rebuild to change the installer.

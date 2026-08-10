@@ -28,6 +28,10 @@
 /install-certs.ps1
 /install-certs.cmd
 /constrained-ca-policy.reg
+
+# No longer produced -- these duplicated files already in the workspace and are all
+# recoverable with `install-certs.ps1 -Export`. Listed so a copy left over from an older
+# version never gets committed; `rucerts artifacts` deletes them on sight.
 /myroot.crt
 /*-constrained.crt
 /*-original.crt
