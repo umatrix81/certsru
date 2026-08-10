@@ -158,6 +158,11 @@ fn domain(ws: &Workspace, action: &DomainAction, no_artifacts: bool) -> Result<(
         }
         DomainAction::Add { domains } => {
             let mut changed = false;
+            let mut hosts = Vec::new();
+
+            // First pass adds everything. The SAN check has to wait until the whole batch
+            // is in: checking as we go would warn about a name supplied later in the same
+            // command line.
             for raw in domains {
                 let host = host_of(raw);
                 if cfg.covers(&host) {
@@ -167,8 +172,15 @@ fn domain(ws: &Workspace, action: &DomainAction, no_artifacts: bool) -> Result<(
                     println!("add    {host}");
                     changed = true;
                 }
-                warn_uncovered_sans(&cfg, &host);
+                if !hosts.contains(&host) {
+                    hosts.push(host);
+                }
             }
+
+            for host in &hosts {
+                warn_uncovered_sans(&cfg, host);
+            }
+
             if !changed {
                 println!("no domains added");
                 return stage_only(ws, no_artifacts);
@@ -400,7 +412,7 @@ fn resign_and_stage(ws: &Workspace, cfg: &Config, no_artifacts: bool) -> Result<
         std::fs::write(&path, cross.to_pem().context("encoding cross-certificate")?)
             .with_context(|| format!("writing {}", path.display()))?;
         println!(
-            "signed {} (SKI {})",
+            "signed {}\n(SKI {})",
             path.display(),
             after.unwrap_or_default()
         );
