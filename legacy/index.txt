@@ -1,0 +1,3 @@
+V	320131104236Z		01	unknown	/C=RU/O=The Ministry of Digital Development and Communications/CN=Russian Trusted Root CA
+V	320131104354Z		02	unknown	/C=RU/O=The Ministry of Digital Development and Communications/CN=Russian Trusted Root CA
+V	320131112300Z		03	unknown	/C=RU/O=The Ministry of Digital Development and Communications/CN=Russian Trusted Root CA

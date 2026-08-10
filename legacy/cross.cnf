@@ -1,0 +1,37 @@
+[ca]
+default_ca = CA_default
+
+[CA_default]
+database        = ./index.txt
+serial          = ./serial
+new_certs_dir   = ./newcerts
+default_md      = sha256
+policy          = pol
+x509_extensions = crossext
+unique_subject  = no
+preserve        = yes
+
+[pol]
+countryName      = optional
+organizationName = optional
+commonName       = supplied
+
+[crossext]
+basicConstraints       = critical,CA:TRUE,pathlen:1
+keyUsage               = critical,keyCertSign,cRLSign
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always
+nameConstraints        = critical,@nc
+
+[nc]
+permitted;DNS.1  = sberbank.ru
+permitted;DNS.2  = sbrf.ru
+permitted;DNS.3  = vtb.ru
+permitted;DNS.6  = alfabank.ru
+permitted;DNS.7  = gazprombank.ru
+permitted;DNS.8  = psb.ru
+permitted;DNS.9  = psbank.ru
+excluded;IP.0    = 0.0.0.0/0.0.0.0
+excluded;IP.1    = ::/::
+excluded;email.0 = .
+excluded;URI.0   = .

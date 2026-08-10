@@ -1,0 +1,18 @@
+[constraints]
+permitted_dns = [
+    "sberbank.ru",
+    "sbrf.ru",
+    "vtb.ru",
+    "alfabank.ru",
+    "gazprombank.ru",
+    "psb.ru",
+    "psbank.ru",
+]
+exclude_ip = true
+exclude_email = true
+exclude_uri = true
+
+[signing]
+cross_days = 2000
+root_days = 3650
+path_len = 1
