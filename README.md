@@ -236,7 +236,7 @@ Restart Chrome and Edge. For Firefox:
 .\install-certs.ps1 -Export .\certs
 ```
 
-`about:preferences#privacy` → View Certificates → **Authorities** → Import:
+`about:preferences#connectionSecurity` → View Certificates → **Authorities** → Import:
 
 1. `myroot.crt` — check **"Trust this CA to identify websites"**
 2. every `*-constrained.crt` — leave **all boxes unchecked**

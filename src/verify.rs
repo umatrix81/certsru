@@ -100,7 +100,7 @@ pub fn run(ws: &Workspace, cfg: &Config, roots: &[ForeignRoot]) -> Result<Report
         "  Хранилища Windows: запустите install-certs.ps1 -- он просматривает CurrentUser \
          и LocalMachine"
     );
-    println!("  Firefox: about:preferences#privacy > Просмотр сертификатов > Центры сертификации");
+    println!("  Firefox: about:preferences#connectionSecurity > Управление сертификатами > Центры сертификации");
 
     Ok(report)
 }

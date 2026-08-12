@@ -149,7 +149,7 @@ for r in roots/*; do
     echo "        SHA256 $(openssl x509 -in "$r" -noout -fingerprint -sha256 | cut -d= -f2)"
 done
 echo "  Windows stores: run .\\install-certs.ps1 -- it scans CurrentUser and LocalMachine"
-echo "  Firefox: about:preferences#privacy > View Certificates > Authorities"
+echo "  Firefox: about:preferences#connectionSecurity > View Certificates > Authorities"
 
 bold "Result"
 [ $FAILED = 0 ] && echo "  all checks passed" || { echo "  FAILURES ABOVE"; exit 1; }
