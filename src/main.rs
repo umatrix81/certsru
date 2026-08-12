@@ -61,7 +61,7 @@ fn run() -> Result<()> {
             let roots = roots::list(&ws)?;
             anyhow::ensure!(
                 !roots.is_empty(),
-                "в roots/ нет корневых сертификатов -- добавьте командой `rucerts ca add`"
+                "в roots/ нет корневых сертификатов -- добавьте командой `rucerts ca add`\n"
             );
             let report = verify::run(&ws, &cfg, &roots)?;
             println!("\nИтог");
@@ -153,7 +153,7 @@ fn restrict_key_permissions(path: &Path) -> Result<Option<String>> {
     Ok(Some(format!(
         "примечание: {} наследует права своей папки. Если к папке имеете доступ, \
          не только вы, ограничьте доступ в PowerShell:\n   \
-         icacls \"{}\" /inheritance:r /grant:r \"$($env:USERNAME):F\"",
+         icacls \"{}\" /inheritance:r /grant:r \"$($env:USERNAME):F\"\n",
         path.display(),
         path.display()
     )))
@@ -234,7 +234,7 @@ fn domain(ws: &Workspace, action: &DomainAction, no_artifacts: bool) -> Result<(
     cfg.save(ws.dir())?;
     resign_and_stage(ws, &cfg, no_artifacts)?;
     println!("\nДобавление и удаление вступают в силу только после повторного импорта;");
-    println!("до этого браузеры используют старые сертификаты.");
+    println!("до этого браузеры используют старые сертификаты.\n");
     Ok(())
 }
 
@@ -392,13 +392,13 @@ fn resign_and_stage(ws: &Workspace, cfg: &Config, no_artifacts: bool) -> Result<
     let roots = roots::list(ws)?;
     anyhow::ensure!(
         !roots.is_empty(),
-        "в roots/ нет сертификатов -- добавьте командой `rucerts ca add`"
+        "в roots/ нет сертификатов -- добавьте командой `rucerts ca add`\n"
     );
 
     // A fresh workspace has roots but no domains yet. Signing would fail on an empty
     // permitted list, so say what is missing instead of surfacing that as an error.
     if cfg.constraints.permitted_dns.is_empty() {
-        println!("разрешённых доменов пока нет -- добавьте командой `rucerts domain add <домен>`");
+        println!("\nразрешённых доменов пока нет -- добавьте командой `rucerts domain add <домен>`\n");
         return Ok(());
     }
     ws.ensure_dirs()?;
@@ -434,7 +434,7 @@ fn resign_and_stage(ws: &Workspace, cfg: &Config, no_artifacts: bool) -> Result<
         )
         .with_context(|| format!("запись {}", path.display()))?;
         println!(
-            "подписан {}\n(SKI {})",
+            "\nподписан {}\n(SKI {})",
             path.display(),
             after.unwrap_or_default()
         );
@@ -458,7 +458,7 @@ fn stage_only(ws: &Workspace, no_artifacts: bool) -> Result<()> {
 /// Prints what a generation run produced.
 fn report_staged(staged: &stage::Staged) {
     println!(
-        "созданы файлы для установки, корневых сертификатов: {}, домены: {}",
+        "\nсозданы файлы для установки, корневых сертификатов: {}, домены: {}",
         staged.roots,
         staged.domains.join(", ")
     );
