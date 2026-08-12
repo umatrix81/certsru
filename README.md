@@ -254,6 +254,13 @@ Restart Chrome and Edge. For Firefox:
 The second is not a mistake. It is stored without trust bits and used only for
 path building; its trust flows from `myroot.crt`. Restart Firefox.
 
+Everything directly inside the export directory is meant to be imported. The
+unconstrained originals are written to `certs\do-not-import\` instead, because
+importing one with trust bits is the exact failure this design prevents and the
+import dialog gives no hint which file is which. They are exported at all only so
+a trust-store sweep and the installer's own check have something to compare
+against.
+
 ### Chrome/Edge via policy instead
 
 Run `constrained-ca-policy.reg` as admin, restart the browser, confirm at

@@ -1,35 +1,39 @@
 <#
 .SYNOPSIS
-    Install (or refresh) the name-constrained CA pair into the Windows certificate stores.
+    Устанавливает (или обновляет) пару сертификатов с ограничением имён в хранилища Windows.
 
 .DESCRIPTION
-    Imports myroot.crt as a trusted root and russian-root-constrained.crt as an
-    intermediate. Re-running replaces the previously installed pair: certificates
-    this script installed are tagged via FriendlyName, so old copies are found and
-    removed even after the root's Common Name has changed.
+    Импортирует локальный корневой сертификат как доверенный корневой, а каждый
+    ограниченный кросс-сертификат -- как промежуточный. Повторный запуск заменяет
+    ранее установленный набор: сертификаты, установленные этим скриптом, помечены
+    через FriendlyName, поэтому старые копии находятся и удаляются даже после
+    смены Common Name корневого сертификата.
 
-    The unconstrained Russian root must NOT be trusted -- if it is, path building
-    routes around the constrained cross-certificate and the constraint enforces
-    nothing. The script detects that and refuses to continue unless you pass
-    -RemoveUnconstrained.
+    Неограниченный российский корневой сертификат НЕ должен быть доверенным: если
+    он доверен, построение цепочки обходит ограниченный кросс-сертификат стороной,
+    и ограничение не значит ничего. Скрипт это обнаруживает и отказывается
+    продолжать, пока не будет передан -RemoveUnconstrained.
 
 .PARAMETER Machine
-    Install into LocalMachine instead of CurrentUser. Requires elevation.
+    Устанавливать в LocalMachine вместо CurrentUser. Требует прав администратора.
 
 .PARAMETER RemoveUnconstrained
-    Delete the unconstrained Russian root from the trust stores if present.
+    Удалить неограниченный российский корневой сертификат из хранилищ доверия,
+    если он там есть.
 
 .PARAMETER Uninstall
-    Remove everything this script installed, then exit.
+    Удалить всё, что установил этот скрипт, и выйти.
 
 .PARAMETER ShowOnly
-    Print the certificates and their thumbprints, install nothing. Use this to
-    verify a copy you received from someone else before running it.
+    Показать сертификаты и их отпечатки, ничего не устанавливая. Используйте это,
+    чтобы проверить копию, полученную от кого-то ещё, прежде чем её запускать.
 
 .PARAMETER Export
-    Write the certificates out as .crt files into the given directory and exit.
-    Firefox keeps its own trust store and cannot be scripted here, so export
-    first and import them by hand.
+    Выгрузить сертификаты файлами .crt в указанный каталог и выйти. У Firefox
+    своё хранилище доверия, управлять им отсюда нельзя, поэтому сначала выгрузите
+    файлы и импортируйте их вручную. Всё, что записано непосредственно в этот
+    каталог, предназначено для импорта; неограниченные оригиналы попадают в
+    подкаталог do-not-import, и их нельзя добавлять ни в одно хранилище доверия.
 
 .EXAMPLE
     .\install-certs.ps1
@@ -54,11 +58,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Deliberately not translated: this marker is written into FriendlyName and matched
+# on the next run to find this script's own earlier copies. Changing it orphans
+# every certificate installed by an earlier version.
 $Tag = '[constrained-ru]'
 
-# Certificates are embedded below by ./add-domain.sh when this script is staged,
-# making the staged copy a single self-contained file. The copy in the source
-# tree keeps this list empty and reads the .crt files beside it instead.
+# Certificates are embedded below by `rucerts artifacts` when this script is
+# staged, making the staged copy a single self-contained file. The copy in the
+# source tree keeps this list empty and reads the .crt files beside it instead.
 $EmbeddedCerts = @(
 #<<<EMBEDDED>>>
 )
@@ -81,14 +88,14 @@ function New-CertFromB64([string]$B64) {
 }
 
 function Read-Cert([string]$Path) {
-    if (-not (Test-Path -LiteralPath $Path)) { throw "missing certificate file: $Path" }
+    if (-not (Test-Path -LiteralPath $Path)) { throw "нет файла сертификата: $Path" }
     try {
         return New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $Path
     } catch {
         # Fallback for PEM on runtimes whose constructor rejects it.
         $text = Get-Content -LiteralPath $Path -Raw
         $m = [regex]::Match($text, '(?s)-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----')
-        if (-not $m.Success) { throw "not a PEM certificate: $Path" }
+        if (-not $m.Success) { throw "это не сертификат в формате PEM: $Path" }
         $der = [Convert]::FromBase64String(($m.Groups[1].Value -replace '\s', ''))
         return New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 (,$der)
     }
@@ -108,8 +115,8 @@ function Set-FriendlyNameSafe {
         $item.FriendlyName = $Friendly
         return $true
     } catch {
-        Write-Warning "could not set friendly name on $StoreName\$Thumbprint : $($_.Exception.Message)"
-        Write-Warning "cosmetic only, the certificate is installed and working -- set the label by hand in certmgr.msc if you want it"
+        Write-Warning "не удалось задать понятное имя для $StoreName\$Thumbprint : $($_.Exception.Message)"
+        Write-Warning "это только косметика, сертификат установлен и работает -- при желании задайте подпись вручную в certmgr.msc"
         return $false
     }
 }
@@ -133,12 +140,12 @@ function Remove-Managed {
         })
         foreach ($c in $doomed) {
             $label = if ($c.FriendlyName) { $c.FriendlyName } else { $c.Subject }
-            if ($PSCmdlet.ShouldProcess("$StoreName / $($c.Thumbprint)", "remove '$label'")) {
+            if ($PSCmdlet.ShouldProcess("$StoreName / $($c.Thumbprint)", "удалить '$label'")) {
                 $store.Remove($c)
-                Write-Host ("  removed  {0}  [{1}]" -f $c.Subject, $c.Thumbprint) -ForegroundColor Yellow
+                Write-Host ("  удалён      {0}  [{1}]" -f $c.Subject, $c.Thumbprint) -ForegroundColor Yellow
             }
         }
-        if ($doomed.Count -eq 0) { Write-Host "  nothing stale in $StoreName" -ForegroundColor DarkGray }
+        if ($doomed.Count -eq 0) { Write-Host "  в $StoreName нет устаревших копий" -ForegroundColor DarkGray }
     }
 }
 
@@ -149,17 +156,17 @@ function Add-Cert {
         param($store)
         $existing = @($store.Certificates | Where-Object { $_.Thumbprint -eq $Cert.Thumbprint })
         if ($existing.Count -gt 0) {
-            Write-Host ("  present  {0}  [{1}]" -f $Cert.Subject, $Cert.Thumbprint) -ForegroundColor DarkGray
+            Write-Host ("  уже есть    {0}  [{1}]" -f $Cert.Subject, $Cert.Thumbprint) -ForegroundColor DarkGray
             if ($existing[0].FriendlyName -ne $Friendly -and
-                $PSCmdlet.ShouldProcess("$StoreName\$($Cert.Thumbprint)", 'set friendly name')) {
+                $PSCmdlet.ShouldProcess("$StoreName\$($Cert.Thumbprint)", 'задать понятное имя')) {
                 Set-FriendlyNameSafe -StoreName $StoreName -Thumbprint $Cert.Thumbprint -Friendly $Friendly | Out-Null
             }
             return
         }
-        if ($PSCmdlet.ShouldProcess("$StoreName\$($Cert.Thumbprint)", "install '$Friendly'")) {
+        if ($PSCmdlet.ShouldProcess("$StoreName\$($Cert.Thumbprint)", "установить '$Friendly'")) {
             $Cert.FriendlyName = $Friendly    # persists through Add on a fresh context
             $store.Add($Cert)
-            Write-Host ("  imported {0}  [{1}]" -f $Cert.Subject, $Cert.Thumbprint) -ForegroundColor Green
+            Write-Host ("  установлен  {0}  [{1}]" -f $Cert.Subject, $Cert.Thumbprint) -ForegroundColor Green
             # Re-assert via the provider in case Add did not carry the label.
             Set-FriendlyNameSafe -StoreName $StoreName -Thumbprint $Cert.Thumbprint -Friendly $Friendly | Out-Null
         }
@@ -168,16 +175,16 @@ function Add-Cert {
 
 # ---------------------------------------------------------------- preconditions
 if ($Machine -and -not (Test-Elevated)) {
-    throw '-Machine requires an elevated PowerShell session (Run as administrator).'
+    throw '-Machine требует сеанс PowerShell с правами администратора (запуск от имени администратора).'
 }
 
-Write-Host "store location: $Location" -ForegroundColor Cyan
+Write-Host "хранилище: $Location" -ForegroundColor Cyan
 
 if ($Uninstall) {
-    Write-Host "`nRemoving everything tagged '$Tag':"
+    Write-Host "`nУдаляю всё, помеченное '$Tag':"
     Remove-Managed -StoreName 'Root'
     Remove-Managed -StoreName 'CA'
-    Write-Host "`nDone. Firefox keeps its own store -- remove the pair there separately." -ForegroundColor Cyan
+    Write-Host "`nГотово. У Firefox своё хранилище -- удалите сертификаты там отдельно." -ForegroundColor Cyan
     return
 }
 
@@ -187,20 +194,20 @@ $crossPair = @()   # @{ Name; Cert }
 $origPair  = @()
 
 if ($EmbeddedCerts.Count -gt 0) {
-    Write-Host "certificates: embedded in this script ($($EmbeddedCerts.Count))" -ForegroundColor DarkGray
+    Write-Host "сертификаты: вшиты в этот скрипт ($($EmbeddedCerts.Count))" -ForegroundColor DarkGray
     foreach ($e in $EmbeddedCerts) {
         $c = New-CertFromB64 $e.B64
         switch ($e.Kind) {
             'root'        { $root = $c }
             'constrained' { $crossPair += @{ Name = $e.Name; Cert = $c } }
             'original'    { $origPair  += @{ Name = $e.Name; Cert = $c } }
-            default       { throw "unknown embedded kind '$($e.Kind)'" }
+            default       { throw "неизвестный тип вшитых данных '$($e.Kind)'" }
         }
     }
-    if (-not $root) { throw 'embedded data has no root certificate' }
+    if (-not $root) { throw 'во вшитых данных нет корневого сертификата' }
 } else {
     $rootFile = Join-Path $PSScriptRoot 'myroot.crt'
-    Write-Host "certificates: read from $PSScriptRoot" -ForegroundColor DarkGray
+    Write-Host "сертификаты: прочитаны из $PSScriptRoot" -ForegroundColor DarkGray
     $root = Read-Cert $rootFile
     foreach ($f in @(Get-ChildItem -Path (Join-Path $PSScriptRoot '*-constrained.crt') -ErrorAction SilentlyContinue)) {
         $crossPair += @{ Name = $f.BaseName -replace '-constrained$', ''; Cert = Read-Cert $f.FullName }
@@ -211,16 +218,16 @@ if ($EmbeddedCerts.Count -gt 0) {
 }
 
 if ($crossPair.Count -eq 0) {
-    throw "no constrained certificates found -- run ./add-domain.sh --restage"
+    throw "не найдено ни одного ограниченного сертификата -- выполните 'rucerts artifacts', чтобы пересоздать этот скрипт"
 }
 
 # ------------------------------------------------------- inspect / export only
 if ($ShowOnly -or $Export) {
-    Write-Host "`nRoot (trust anchor):" -ForegroundColor Cyan
-    Write-Host ("  {0}`n    {1}  expires {2:yyyy-MM-dd}" -f $root.Subject, $root.Thumbprint, $root.NotAfter)
-    Write-Host "Constrained intermediates:" -ForegroundColor Cyan
+    Write-Host "`nКорневой сертификат (якорь доверия):" -ForegroundColor Cyan
+    Write-Host ("  {0}`n    {1}  истекает {2:yyyy-MM-dd}" -f $root.Subject, $root.Thumbprint, $root.NotAfter)
+    Write-Host "Ограниченные промежуточные сертификаты:" -ForegroundColor Cyan
     foreach ($p in $crossPair) {
-        Write-Host ("  {0}`n    {1}  expires {2:yyyy-MM-dd}" -f $p.Cert.Subject, $p.Cert.Thumbprint, $p.Cert.NotAfter)
+        Write-Host ("  {0}`n    {1}  истекает {2:yyyy-MM-dd}" -f $p.Cert.Subject, $p.Cert.Thumbprint, $p.Cert.NotAfter)
     }
 }
 if ($Export) {
@@ -231,8 +238,27 @@ if ($Export) {
     }
     Write-Pem $root (Join-Path $Export 'myroot.crt')
     foreach ($p in $crossPair) { Write-Pem $p.Cert (Join-Path $Export "$($p.Name)-constrained.crt") }
-    foreach ($p in $origPair)  { Write-Pem $p.Cert (Join-Path $Export "$($p.Name)-original.crt") }
-    Write-Host "`nExported to $Export -- use these for the manual Firefox import." -ForegroundColor Cyan
+
+    # The unconstrained originals go one directory down, deliberately. Everything in
+    # $Export is meant to be imported into Firefox; an original imported with trust
+    # bits is exactly the failure this whole design prevents, and the import dialog
+    # gives no hint which file is which. They are still written out because the
+    # unconstrained-root check skips itself when no original is available.
+    if ($origPair.Count -gt 0) {
+        $noImport = Join-Path $Export 'do-not-import'
+        if (-not (Test-Path -LiteralPath $noImport)) {
+            New-Item -ItemType Directory -Path $noImport | Out-Null
+        }
+        foreach ($p in $origPair) { Write-Pem $p.Cert (Join-Path $noImport "$($p.Name)-original.crt") }
+    }
+
+    Write-Host "`nЭкспортированы в $Export -- используйте их для ручного импорта в Firefox." -ForegroundColor Cyan
+    Write-Host "Импортируйте оба файла из этой папки: myroot.crt (с доверием к веб-сайтам)" -ForegroundColor Cyan
+    Write-Host "и *-constrained.crt (без единой галочки)." -ForegroundColor Cyan
+    if ($origPair.Count -gt 0) {
+        Write-Host "Папка do-not-import\ содержит НЕОГРАНИЧЕННЫЕ оригиналы: не импортируйте их" -ForegroundColor Yellow
+        Write-Host "никуда. Они нужны только для сверки и обхода хранилищ доверия." -ForegroundColor Yellow
+    }
 }
 if ($ShowOnly -or $Export) { return }
 
@@ -242,10 +268,10 @@ foreach ($p in $crossPair) {
     # Each cross-certificate must actually chain to this root, or we would install
     # something that cannot validate anything.
     if ($c.Issuer -ne $root.Subject) {
-        throw ("$($f.Name) issuer does not match the root:`n" +
-               "  cross issuer : $($c.Issuer)`n" +
-               "  root subject : $($root.Subject)`n" +
-               "Re-run ./add-domain.sh --resign to regenerate.")
+        throw ("издатель кросс-сертификата $($p.Name) не совпадает с корнем:`n" +
+               "  издатель кросс-сертификата : $($c.Issuer)`n" +
+               "  субъект корня              : $($root.Subject)`n" +
+               "Выполните 'rucerts resign', чтобы пересоздать его.")
     }
     $crosses += $c
 }
@@ -268,25 +294,25 @@ if ($originals.Count -gt 0) {
     }
 
     if ($found.Count -gt 0) {
-        Write-Host "`nAn UNCONSTRAINED original root is trusted here:" -ForegroundColor Red
+        Write-Host "`nЗдесь доверен НЕОГРАНИЧЕННЫЙ исходный корневой сертификат:" -ForegroundColor Red
         $found | ForEach-Object {
             Write-Host ("  {0}\{1}  {2}" -f $_.Location, $_.Store, $_.Cert.Subject) -ForegroundColor Red }
 
         if (-not $RemoveUnconstrained) {
-            throw ("While that certificate is trusted, chain building bypasses the constrained " +
-                   "cross-certificate entirely and the name constraints enforce nothing. " +
-                   "Re-run with -RemoveUnconstrained, or delete it by hand first.")
+            throw ("Пока этот сертификат доверен, построение цепочки полностью обходит " +
+                   "ограниченный кросс-сертификат, и ограничения имён не значат ничего. " +
+                   "Запустите заново с -RemoveUnconstrained либо сначала удалите его вручную.")
         }
         foreach ($f in $found) {
             if ($f.Location -eq 'LocalMachine' -and -not (Test-Elevated)) {
-                Write-Warning "cannot remove from LocalMachine\$($f.Store) without elevation -- skipped"
+                Write-Warning "не могу удалить из LocalMachine\$($f.Store) без прав администратора -- пропущено"
                 continue
             }
             $s = New-Object System.Security.Cryptography.X509Certificates.X509Store $f.Store, $f.Location
             $s.Open('ReadWrite')
-            if ($PSCmdlet.ShouldProcess("$($f.Location)\$($f.Store)", 'remove unconstrained root')) {
+            if ($PSCmdlet.ShouldProcess("$($f.Location)\$($f.Store)", 'удалить неограниченный корневой сертификат')) {
                 $s.Remove($f.Cert)
-                Write-Host ("  removed unconstrained root from {0}\{1}" -f $f.Location, $f.Store) -ForegroundColor Yellow
+                Write-Host ("  неограниченный корень удалён из {0}\{1}" -f $f.Location, $f.Store) -ForegroundColor Yellow
             }
             $s.Close()
         }
@@ -295,36 +321,41 @@ if ($originals.Count -gt 0) {
 
 # ------------------------------------------------------------------- install
 $issuedBy     = $root.Subject -replace '^CN=', ''
-$rootFriendly = "$Tag root - trust anchor (do not delete)"
+$rootFriendly = "$Tag корневой - якорь доверия (не удалять)"
 
-Write-Host "`nRoot store:"
+Write-Host "`nХранилище корневых сертификатов:"
 Remove-Managed -StoreName 'Root' -Subjects @($root.Subject) -KeepThumbprints @($root.Thumbprint)
 Add-Cert       -StoreName 'Root' -Cert $root -Friendly $rootFriendly
 
-Write-Host "`nIntermediate (CA) store:"
+Write-Host "`nХранилище промежуточных центров сертификации (CA):"
 Remove-Managed -StoreName 'CA' -Subjects @($crosses | ForEach-Object { $_.Subject }) `
                -KeepThumbprints @($crosses | ForEach-Object { $_.Thumbprint })
 foreach ($c in $crosses) {
     $cn = ($c.Subject -split ',' | Where-Object { $_ -match 'CN=' }) -replace '.*CN=', ''
-    Add-Cert -StoreName 'CA' -Cert $c -Friendly "$Tag $cn CONSTRAINED - issued by $issuedBy"
+    Add-Cert -StoreName 'CA' -Cert $c -Friendly "$Tag $cn ОГРАНИЧЕН - выдан $issuedBy"
 }
 
 # -------------------------------------------------------------------- summary
-Write-Host "`nInstalled:" -ForegroundColor Cyan
-Write-Host ("  root  {0}" -f $root.Subject)
-Write-Host ("        thumbprint {0}, expires {1:yyyy-MM-dd}" -f $root.Thumbprint, $root.NotAfter)
+Write-Host "`nУстановлено:" -ForegroundColor Cyan
+Write-Host ("  корень {0}" -f $root.Subject)
+Write-Host ("         отпечаток {0}, истекает {1:yyyy-MM-dd}" -f $root.Thumbprint, $root.NotAfter)
 foreach ($c in $crosses) {
-    Write-Host ("  cross {0}" -f $c.Subject)
-    Write-Host ("        thumbprint {0}, expires {1:yyyy-MM-dd}" -f $c.Thumbprint, $c.NotAfter)
+    Write-Host ("  кросс  {0}" -f $c.Subject)
+    Write-Host ("         отпечаток {0}, истекает {1:yyyy-MM-dd}" -f $c.Thumbprint, $c.NotAfter)
     $nc = $c.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.30' }
     if ($nc) {
-        $names = [regex]::Matches($nc.Format($true), 'DNS Name=([^\r\n,]+)') |
+        # Format() renders through the platform, and the label differs by all of
+        # OS, locale and runtime: Windows prints "DNS Name=host" (localised, so
+        # "DNS-имя=" on a Russian install) while the OpenSSL-backed runtimes print
+        # "DNS:host". All three shapes are matched; an unrecognised one costs only
+        # this one informational line.
+        $names = [regex]::Matches($nc.Format($true), 'DNS(?:\s*Name)?(?:-имя)?\s*[:=]\s*([^\r\n,]+)') |
                  ForEach-Object { $_.Groups[1].Value.Trim() }
-        if ($names) { Write-Host ("        permitted: {0}" -f ($names -join ', ')) }
+        if ($names) { Write-Host ("         разрешено: {0}" -f ($names -join ', ')) }
     }
 }
 
-Write-Host "`nRestart Chrome and Edge to pick this up." -ForegroundColor Cyan
-Write-Host "Firefox uses its own store. Run:  .\install-certs.ps1 -Export .\certs" -ForegroundColor Cyan
-Write-Host "then import myroot.crt (trusted for websites) and every" -ForegroundColor Cyan
-Write-Host "*-constrained.crt (NO trust bits) under Authorities." -ForegroundColor Cyan
+Write-Host "`nПерезапустите Chrome и Edge, чтобы изменения вступили в силу." -ForegroundColor Cyan
+Write-Host "У Firefox своё хранилище. Выполните:  .\install-certs.ps1 -Export .\certs" -ForegroundColor Cyan
+Write-Host "затем импортируйте myroot.crt (с доверием к веб-сайтам) и каждый" -ForegroundColor Cyan
+Write-Host "*-constrained.crt (БЕЗ флагов доверия) в разделе «Центры сертификации»." -ForegroundColor Cyan

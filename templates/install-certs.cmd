@@ -17,8 +17,8 @@ setlocal
 set "PS1=%~dp0install-certs.ps1"
 
 if not exist "%PS1%" (
-    echo install-certs.ps1 was not found next to this file.
-    echo Keep the two together.
+    echo install-certs.ps1 не найден.
+    echo Держите оба файла вместе.
     echo.
     pause
     exit /b 1
