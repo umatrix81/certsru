@@ -1,7 +1,13 @@
 # Constrained trust for the Russian Trusted Root CA
 
+*[Русская версия](README.ru.md)*
+
 Trust a third-party CA for a **fixed list of domains only**, instead of for the
 whole internet.
+
+The tool's own interface — help text, progress output and error messages — is in
+Russian. This document is in English; the sections below quote the commands, not
+their output.
 
 Installing `russian_trusted_root_ca.cer` normally lets that CA vouch for *any*
 hostname. This setup narrows it: a cross-certificate carrying an X.509
@@ -53,7 +59,7 @@ for system-wide trust. Both mechanisms are generated here; pick one.
 |---|---|
 | `roots/` | Foreign CA roots to constrain |
 | `roots/retired/` | Roots no longer constrained |
-| `constrained/` | One cross-certificate per root |
+| `constrained/` | One cross-certificate per root, `<name>-constrained.pem` |
 | `rucerts.toml` | Permitted domains and signing parameters |
 | `myroot.pem` / `myroot.key` | Local root. **The key is the crown jewel.** |
 | `src/`, `tests/`, `Cargo.toml` | The `rucerts` tool |
@@ -70,7 +76,7 @@ Generated into the workspace, ready to install or share:
 | `constrained-ca-policy.reg` | Chrome/Edge policy, uses the *original* root |
 
 Three files, not a directory full of them. Loose `.crt` copies are deliberately not
-written: they duplicated `myroot.pem`, `constrained/*.pem` and `roots/*` byte for byte,
+written: they duplicated `myroot.pem`, `constrained/*-constrained.pem` and `roots/*` byte for byte,
 and all of them are already inside the installer. When Firefox needs files to import:
 
 ```powershell
@@ -89,6 +95,10 @@ below assume `target/release/rucerts` is on your path.
 
 Global flags: `--dir <workspace>` (defaults to the current directory) and
 `--no-artifacts` to skip regenerating the installable files.
+
+Help is available as `rucerts --help` and `rucerts <command> --help`. There is no
+`rucerts help <command>` form: clap's generated `help` subcommand carries English
+text that cannot be replaced, so it is switched off.
 
 ### Domains
 
@@ -290,8 +300,8 @@ party. Have recipients run `-ShowOnly` and check thumbprints out of band.
 **One unconstrained copy voids everything.** If the original root is trusted
 anywhere — Windows stores, `/usr/local/share/ca-certificates`, a Firefox
 profile — path building routes around your cross-certificate and the constraints
-enforce nothing. `install-certs.ps1` and `rucerts verify` both surface this. 
-this. Never install `*-original.crt`; it exists only so the check has something
+enforce nothing. `install-certs.ps1` and `rucerts verify` both surface this.
+Never install `*-original.crt`; it exists only so the check has something
 to compare against.
 
 **Constraint types not listed are unconstrained.** `rucerts.toml` therefore
@@ -319,7 +329,7 @@ Manual chain check:
 openssl s_client -connect sberbank.ru:443 -servername sberbank.ru -showcerts \
   </dev/null 2>/dev/null | awk '/BEGIN CERT/,/END CERT/' > /tmp/chain.pem
 csplit -s -z -f /tmp/c_ -b '%d.pem' /tmp/chain.pem '/BEGIN CERTIFICATE/' '{*}'
-cat constrained/*.pem /tmp/c_1.pem > /tmp/unt.pem
+cat constrained/*-constrained.pem /tmp/c_1.pem > /tmp/unt.pem
 openssl verify -CAfile myroot.pem -untrusted /tmp/unt.pem /tmp/c_0.pem
 ```
 
