@@ -2,27 +2,93 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory as _, FromArgMatches as _, Parser, Subcommand};
 
-/// Manage name-constrained cross-certificates for third-party CAs.
+/// Help layout with clap's own English headings replaced.
 ///
-/// Trusting a third-party CA normally lets it vouch for any hostname.
-/// This narrows it: the CA's root is re-issued under a locally generated
-/// root carrying an X.509 nameConstraints extension, and only the local
-/// root is trusted.
+/// The section titles clap prints around the derived text -- `Usage:`, `Options:`,
+/// `Commands:`, the help and version blurbs -- are not part of any doc comment, so they
+/// are overridden on the built [`clap::Command`] instead. Errors clap raises for a bad
+/// invocation stay English; those strings are not exposed for replacement.
+const HELP_TEMPLATE: &str = "\
+{before-help}{about-with-newline}
+Использование: {usage}
+
+{all-args}{after-help}";
+
+/// Returns the parsed command line, with clap's own text in Russian.
 ///
-/// First run, in this order:
+/// # Errors
+/// Never returns: clap exits the process itself on a parse error or a help request.
+pub fn parse() -> Cli {
+    let matches = localize(Cli::command()).get_matches();
+    // The derive guarantees the shape matches, so this cannot fail on real input.
+    Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit())
+}
+
+/// Applies the Russian headings to a command and, recursively, its subcommands.
+fn localize(cmd: clap::Command) -> clap::Command {
+    // clap adds its own --help and --version while building, too late to relabel, so the
+    // automatic ones are switched off and replaced with identically-behaving arguments.
+    let has_version = cmd.get_version().is_some();
+    let mut cmd = cmd
+        .help_template(HELP_TEMPLATE)
+        .subcommand_help_heading("Команды")
+        .subcommand_value_name("КОМАНДА")
+        .mut_args(|arg| arg.help_heading("Параметры"))
+        // The generated `help` subcommand carries English text that cannot be replaced
+        // before the command is built; `--help` covers the same ground.
+        .disable_help_subcommand(true)
+        .disable_help_flag(true)
+        .disable_version_flag(true)
+        .arg(
+            clap::Arg::new("help")
+                .short('h')
+                .long("help")
+                .action(clap::ArgAction::Help)
+                .help("Показать справку")
+                .help_heading("Параметры"),
+        );
+
+    if has_version {
+        cmd = cmd.arg(
+            clap::Arg::new("version")
+                .short('V')
+                .long("version")
+                .action(clap::ArgAction::Version)
+                .help("Показать версию")
+                .help_heading("Параметры"),
+        );
+    }
+
+    let names: Vec<String> = cmd
+        .get_subcommands()
+        .map(|s| s.get_name().to_owned())
+        .collect();
+    names
+        .into_iter()
+        .fold(cmd, |c, name| c.mut_subcommand(name, localize))
+}
+
+/// Кросс-сертификаты с ограничением имён для сторонних УЦ.
 ///
-///   rucerts init --cn "My Root"      create the local root
-///   rucerts ca add <root.cer>        the CA to constrain
-///   rucerts domain add example.com   what it may vouch for
-///   rucerts verify                   prove it before trusting it
+/// Доверие стороннему УЦ обычно позволяет ему ручаться за любое имя
+/// хоста. Здесь это сужается: корень УЦ переподписывается локально
+/// созданным корнем с расширением X.509 nameConstraints, и доверие
+/// выдаётся только локальному корню.
 ///
-/// Then install: run install-certs.cmd, or install-certs.ps1 from
-/// PowerShell with -ExecutionPolicy Bypass.
+/// Первый запуск, в таком порядке:
 ///
-/// Afterwards, domain and ca are the commands you reach for; each
-/// re-signs and regenerates the installable files on its own.
+///   rucerts init --cn "Мой корень"   создать локальный корень
+///   rucerts ca add <root.cer>        УЦ, который надо ограничить
+///   rucerts domain add example.com   за что ему разрешено ручаться
+///   rucerts verify                   проверить, прежде чем доверять
+///
+/// Затем установка: запустить install-certs.cmd либо install-certs.ps1
+/// из PowerShell с -ExecutionPolicy Bypass.
+///
+/// Дальше в ходу команды domain и ca; каждая сама переподписывает
+/// сертификаты и заново создаёт файлы для установки.
 #[derive(Debug, Parser)]
 #[command(name = "rucerts", version, about, verbatim_doc_comment)]
 #[expect(
@@ -31,15 +97,15 @@ use clap::{Parser, Subcommand};
               markdown would be shown to the user literally rather than formatted"
 )]
 pub struct Cli {
-    /// Workspace directory holding roots/, constrained/ and rucerts.toml.
+    /// Каталог рабочей области с roots/, constrained/ и rucerts.toml.
     #[arg(long, global = true)]
     pub dir: Option<PathBuf>,
 
-    /// Skip regenerating the installable artifacts.
+    /// Не пересоздавать файлы для установки.
     #[arg(long, global = true)]
     pub no_artifacts: bool,
 
-    /// What to do.
+    /// Что сделать.
     #[command(subcommand)]
     pub command: Command,
 }
@@ -51,33 +117,33 @@ pub struct Cli {
 /// there is nothing to sign against until a CA exists. Maintenance commands follow.
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// 1. Create a local root and configuration in an empty workspace.
+    /// 1. Создать локальный корневой сертификат и конфигурацию.
     Init {
-        /// Common Name for the local root.
-        #[arg(long, default_value = "!Root to bypass Russian certificates")]
+        /// Common Name локального корня.
+        #[arg(long, default_value = "!Корень в обход рос. сертификатов")]
         cn: String,
     },
-    /// 2. Manage the foreign CA roots being constrained.
+    /// 2. Управление корневыми сертификатами УЦ.
     Ca {
-        /// CA operation.
+        /// Операция с УЦ.
         #[command(subcommand)]
         action: CaAction,
     },
-    /// 3. Manage the permitted domain list.
+    /// 3. Управлять списком разрешённых доменов.
     Domain {
-        /// Domain operation.
+        /// Операция с доменами.
         #[command(subcommand)]
         action: DomainAction,
     },
-    /// 4. Audit the generated cross-certificates.
+    /// 4. Проверить созданные кросс-сертификаты.
     Verify,
-    /// Re-sign every cross-certificate without changing the domain list.
+    /// Переподписать все кросс-сертификаты, не меняя список доменов.
     Resign,
-    /// Regenerate the installable artifacts without re-signing.
+    /// Пересоздать файлы для установки без переподписи.
     Artifacts,
-    /// Rename or replace the local root.
+    /// Переименовать или заменить локальный корневой сертификат.
     Root {
-        /// Root operation.
+        /// Операция с локальным корнем.
         #[command(subcommand)]
         action: RootAction,
     },
@@ -86,36 +152,36 @@ pub enum Command {
 /// Operations on the permitted domain list.
 #[derive(Debug, Subcommand)]
 pub enum DomainAction {
-    /// Add domains, then re-sign and stage.
+    /// Добавить домены, затем переподписать и собрать файлы.
     Add {
-        /// Domains to permit. A pasted URL is reduced to its host.
+        /// Домены, которые разрешить. Из вставленного URL берётся только хост.
         #[arg(required = true)]
         domains: Vec<String>,
     },
-    /// Remove domains, then re-sign and stage.
+    /// Убрать домены, затем переподписать и собрать файлы.
     Remove {
-        /// Domains to stop permitting. Only exact entries are removed.
+        /// Домены, которые больше не разрешать. Удаляются только точные записи.
         #[arg(required = true)]
         domains: Vec<String>,
     },
-    /// Print the permitted domains.
+    /// Показать разрешённые домены.
     List,
 }
 
 /// Operations on the foreign CA roots.
 #[derive(Debug, Subcommand)]
 pub enum CaAction {
-    /// Add a root, or report that its key is already managed.
+    /// Добавить корень или сообщить, что его ключ уже под управлением.
     Add {
-        /// Certificate files, PEM or DER.
+        /// Файлы сертификатов, PEM или DER.
         #[arg(required = true)]
         files: Vec<PathBuf>,
     },
-    /// Print the managed roots with their key fingerprints.
+    /// Показать управляемые корни с отпечатками их ключей.
     List,
-    /// Stop constraining a root, moving it to roots/retired/.
+    /// Перестать ограничивать корень, переместив его в roots/retired/.
     Retire {
-        /// Name as shown by `rucerts ca list`.
+        /// Имя, как его показывает `rucerts ca list`.
         name: String,
     },
 }
@@ -123,14 +189,14 @@ pub enum CaAction {
 /// Operations on the local root.
 #[derive(Debug, Subcommand)]
 pub enum RootAction {
-    /// Generate a new local root with the given Common Name.
+    /// Создать новый локальный корень с указанным Common Name.
     ///
-    /// This mints a new key pair; everything already trusting the old root must be
-    /// updated.
+    /// Создаётся новая пара ключей; всё, что уже доверяет старому корню, придётся
+    /// обновить.
     SetCn {
-        /// The new Common Name.
+        /// Новый Common Name.
         cn: String,
-        /// Skip the confirmation prompt.
+        /// Не спрашивать подтверждение.
         #[arg(short = 'y', long)]
         yes: bool,
     },

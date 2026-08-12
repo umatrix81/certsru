@@ -70,7 +70,7 @@ impl Workspace {
     /// If a directory cannot be created.
     pub fn ensure_dirs(&self) -> Result<()> {
         for dir in [self.roots_dir(), self.constrained_dir()] {
-            fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+            fs::create_dir_all(&dir).with_context(|| format!("создание {}", dir.display()))?;
         }
         Ok(())
     }
@@ -84,14 +84,16 @@ impl Workspace {
     /// If the directory cannot be created or a file cannot be copied.
     pub fn backup(&self, label: &str, files: &[PathBuf]) -> Result<PathBuf> {
         let dir = self.dir.join(format!("backup-{label}"));
-        fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+        fs::create_dir_all(&dir).with_context(|| format!("создание {}", dir.display()))?;
         for src in files {
             if !src.exists() {
                 continue;
             }
-            let name = src.file_name().context("backup source has no file name")?;
+            let name = src
+                .file_name()
+                .context("у файла для резервной копии нет имени")?;
             fs::copy(src, dir.join(name))
-                .with_context(|| format!("copying {} into backup", src.display()))?;
+                .with_context(|| format!("копирование {} в резервную копию", src.display()))?;
         }
         Ok(dir)
     }

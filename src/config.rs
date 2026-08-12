@@ -118,35 +118,35 @@ impl Config {
         let toml_path = dir.join("rucerts.toml");
         if toml_path.exists() {
             let text = fs::read_to_string(&toml_path)
-                .with_context(|| format!("reading {}", toml_path.display()))?;
+                .with_context(|| format!("чтение {}", toml_path.display()))?;
             return toml::from_str(&text)
-                .with_context(|| format!("parsing {}", toml_path.display()));
+                .with_context(|| format!("разбор {}", toml_path.display()));
         }
 
         let renamed = dir.join("certsru.toml");
         if renamed.exists() {
             let text = fs::read_to_string(&renamed)
-                .with_context(|| format!("reading {}", renamed.display()))?;
+                .with_context(|| format!("чтение {}", renamed.display()))?;
             let cfg: Self =
-                toml::from_str(&text).with_context(|| format!("parsing {}", renamed.display()))?;
+                toml::from_str(&text).with_context(|| format!("разбор {}", renamed.display()))?;
             cfg.save(dir)?;
-            fs::remove_file(&renamed).with_context(|| format!("removing {}", renamed.display()))?;
-            eprintln!("migrated certsru.toml -> rucerts.toml");
+            fs::remove_file(&renamed).with_context(|| format!("удаление {}", renamed.display()))?;
+            eprintln!("перенесено: certsru.toml -> rucerts.toml");
             return Ok(cfg);
         }
 
         let cnf_path = dir.join("cross.cnf");
         if cnf_path.exists() {
             let text = fs::read_to_string(&cnf_path)
-                .with_context(|| format!("reading {}", cnf_path.display()))?;
+                .with_context(|| format!("чтение {}", cnf_path.display()))?;
             let cfg = Self::new(parse_cross_cnf(&text));
             cfg.save(dir)?;
-            eprintln!("migrated cross.cnf -> rucerts.toml");
+            eprintln!("перенесено: cross.cnf -> rucerts.toml");
             return Ok(cfg);
         }
 
         anyhow::bail!(
-            "no rucerts.toml in {} -- run `rucerts init` first",
+            "в {} нет rucerts.toml -- сначала выполните `rucerts init`",
             dir.display()
         )
     }
@@ -157,8 +157,8 @@ impl Config {
     /// If the file cannot be written.
     pub fn save(&self, dir: &Path) -> Result<()> {
         let path = dir.join("rucerts.toml");
-        let text = toml::to_string_pretty(self).context("serialising config")?;
-        fs::write(&path, text).with_context(|| format!("writing {}", path.display()))
+        let text = toml::to_string_pretty(self).context("сериализация конфигурации")?;
+        fs::write(&path, text).with_context(|| format!("запись {}", path.display()))
     }
 
     /// Returns true when `name` falls inside an already-permitted subtree.

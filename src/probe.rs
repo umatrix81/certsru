@@ -39,33 +39,33 @@ pub struct Chain {
 pub fn fetch(host: &str) -> Result<Chain> {
     let addr = format!("{host}:{HTTPS_PORT}")
         .to_socket_addrs()
-        .with_context(|| format!("resolving {host}"))?
+        .with_context(|| format!("разрешение имени {host}"))?
         .next()
-        .with_context(|| format!("{host} resolved to no addresses"))?;
+        .with_context(|| format!("для {host} не найдено ни одного адреса"))?;
 
     let stream = TcpStream::connect_timeout(&addr, PROBE_TIMEOUT)
-        .with_context(|| format!("connecting to {host}"))?;
+        .with_context(|| format!("подключение к {host}"))?;
     stream.set_read_timeout(Some(PROBE_TIMEOUT))?;
     stream.set_write_timeout(Some(PROBE_TIMEOUT))?;
 
-    let mut builder = SslConnector::builder(SslMethod::tls()).context("building TLS connector")?;
+    let mut builder = SslConnector::builder(SslMethod::tls()).context("создание TLS-коннектора")?;
     // Collecting, not trusting -- see the module documentation.
     builder.set_verify(SslVerifyMode::NONE);
     let connector = builder.build();
 
     let mut tls = connector
         .configure()
-        .context("configuring TLS")?
+        .context("настройка TLS")?
         // The server needs SNI to pick the right certificate; without it many hosts
         // return a default certificate for an unrelated name.
         .verify_hostname(false)
         .connect(host, stream)
-        .with_context(|| format!("TLS handshake with {host}"))?;
+        .with_context(|| format!("TLS-рукопожатие с {host}"))?;
 
     let leaf = tls
         .ssl()
         .peer_certificate()
-        .with_context(|| format!("{host} sent no certificate"))?;
+        .with_context(|| format!("{host} не прислал сертификат"))?;
     let intermediates = tls
         .ssl()
         .peer_cert_chain()

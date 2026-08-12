@@ -9,7 +9,6 @@ use std::io::{self, Write as _};
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use clap::Parser as _;
 use mimalloc::MiMalloc;
 
 use rucerts::config::{Config, MAX_CN_BYTES};
@@ -22,23 +21,23 @@ use rucerts::x509::{
     subject_cn,
 };
 
-use crate::cli::{CaAction, Cli, Command, DomainAction, RootAction};
+use crate::cli::{CaAction, Command, DomainAction, RootAction};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
 fn main() {
     if let Err(err) = run() {
-        eprintln!("error: {err:#}");
+        eprintln!("ошибка: {err:#}");
         std::process::exit(1);
     }
 }
 
 fn run() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = cli::parse();
     let dir = match cli.dir {
         Some(ref d) => d.clone(),
-        None => std::env::current_dir().context("resolving current directory")?,
+        None => std::env::current_dir().context("определение текущего каталога")?,
     };
     let ws = Workspace::new(&dir);
 
@@ -62,16 +61,16 @@ fn run() -> Result<()> {
             let roots = roots::list(&ws)?;
             anyhow::ensure!(
                 !roots.is_empty(),
-                "no roots in roots/ -- add one with `rucerts ca add`"
+                "в roots/ нет корней -- добавьте командой `rucerts ca add`"
             );
             let report = verify::run(&ws, &cfg, &roots)?;
-            println!("\nResult");
+            println!("\nИтог");
             if report.failed == 0 {
-                println!("  all {} checks passed", report.passed);
+                println!("  все проверки пройдены: {}", report.passed);
                 Ok(())
             } else {
                 anyhow::bail!(
-                    "{} of {} checks failed",
+                    "не пройдено проверок: {} из {}",
                     report.failed,
                     report.passed + report.failed
                 )
@@ -84,7 +83,7 @@ fn run() -> Result<()> {
 fn init(ws: &Workspace, cn: &str) -> Result<()> {
     anyhow::ensure!(
         !ws.root_cert().exists(),
-        "{} already exists -- use `rucerts root set-cn` to replace it",
+        "{} уже существует -- замените его командой `rucerts root set-cn`",
         ws.root_cert().display()
     );
     ws.ensure_dirs()?;
@@ -95,9 +94,9 @@ fn init(ws: &Workspace, cn: &str) -> Result<()> {
     let (cert, key) = generate_root(cn, cfg.signing.root_days)?;
     let advisory = write_root(ws, &cert, &key)?;
 
-    println!("created {}", ws.root_cert().display());
-    println!("  subject: {}", subject_cn(&cert).unwrap_or_default());
-    println!("\nNext: `rucerts ca add <root.cer>` then `rucerts domain add <domain>`.");
+    println!("создан {}", ws.root_cert().display());
+    println!("  субъект: {}", subject_cn(&cert).unwrap_or_default());
+    println!("\nДалее: `rucerts ca add <root.cer>`, затем `rucerts domain add <домен>`.");
     if let Some(note) = advisory {
         println!("\n{note}");
     }
@@ -110,13 +109,14 @@ fn write_root(
     cert: &openssl::x509::X509,
     key: &openssl::pkey::PKey<openssl::pkey::Private>,
 ) -> Result<Option<String>> {
-    std::fs::write(ws.root_cert(), cert.to_pem().context("encoding root")?)
-        .with_context(|| format!("writing {}", ws.root_cert().display()))?;
+    std::fs::write(ws.root_cert(), cert.to_pem().context("кодирование корня")?)
+        .with_context(|| format!("запись {}", ws.root_cert().display()))?;
     std::fs::write(
         ws.root_key(),
-        key.private_key_to_pem_pkcs8().context("encoding key")?,
+        key.private_key_to_pem_pkcs8()
+            .context("кодирование ключа")?,
     )
-    .with_context(|| format!("writing {}", ws.root_key().display()))?;
+    .with_context(|| format!("запись {}", ws.root_key().display()))?;
     restrict_key_permissions(&ws.root_key())
 }
 
@@ -126,7 +126,7 @@ fn restrict_key_permissions(path: &Path) -> Result<Option<String>> {
     use std::os::unix::fs::PermissionsExt as _;
     let perms = std::fs::Permissions::from_mode(0o600);
     std::fs::set_permissions(path, perms)
-        .with_context(|| format!("restricting {}", path.display()))?;
+        .with_context(|| format!("ограничение доступа к {}", path.display()))?;
     Ok(None)
 }
 
@@ -149,8 +149,8 @@ fn restrict_key_permissions(path: &Path) -> Result<Option<String>> {
     // Full control rather than read: the owner still has to be able to replace this file,
     // and `rucerts root set-cn` rewrites it. Removing inheritance is what makes it private.
     Ok(Some(format!(
-        "note: {} inherits its folder's permissions. If this workspace is not somewhere \
-         only you can read, restrict it in PowerShell with:\n      \
+        "примечание: {} наследует права своей папки. Если рабочая область лежит не там, \
+         где читать можете только вы, ограничьте доступ в PowerShell:\n      \
          icacls \"{}\" /inheritance:r /grant:r \"$($env:USERNAME):F\"",
         path.display(),
         path.display()
@@ -178,10 +178,10 @@ fn domain(ws: &Workspace, action: &DomainAction, no_artifacts: bool) -> Result<(
             for raw in domains {
                 let host = host_of(raw);
                 if cfg.covers(&host) {
-                    println!("skip   {host} (already inside a permitted subtree)");
+                    println!("пропуск  {host} (уже внутри разрешённого поддерева)");
                 } else {
                     cfg.constraints.permitted_dns.push(host.clone());
-                    println!("add    {host}");
+                    println!("добавлен {host}");
                     changed = true;
                 }
                 if !hosts.contains(&host) {
@@ -194,7 +194,7 @@ fn domain(ws: &Workspace, action: &DomainAction, no_artifacts: bool) -> Result<(
             }
 
             if !changed {
-                println!("no domains added");
+                println!("домены не добавлены");
                 return stage_only(ws, no_artifacts);
             }
         }
@@ -209,21 +209,21 @@ fn domain(ws: &Workspace, action: &DomainAction, no_artifacts: bool) -> Result<(
                     .position(|d| *d == host)
                 else {
                     println!(
-                        "skip   {host} (not an exact entry; remove the subtree parent by name)"
+                        "пропуск  {host} (нет такой точной записи; удалите родителя поддерева по имени)"
                     );
                     continue;
                 };
                 anyhow::ensure!(
                     cfg.constraints.permitted_dns.len() > 1,
-                    "refusing to remove the last permitted domain -- the certificate would \
-                     trust nothing, which reads as a broken chain rather than a policy"
+                    "отказ удалить последний разрешённый домен -- сертификат не доверял бы \
+                     ничему, а это выглядит как сломанная цепочка, а не как политика"
                 );
                 cfg.constraints.permitted_dns.remove(pos);
-                println!("remove {host}");
+                println!("удалён   {host}");
                 changed = true;
             }
             if !changed {
-                println!("nothing removed");
+                println!("ничего не удалено");
                 return Ok(());
             }
         }
@@ -231,8 +231,8 @@ fn domain(ws: &Workspace, action: &DomainAction, no_artifacts: bool) -> Result<(
 
     cfg.save(ws.dir())?;
     resign_and_stage(ws, &cfg, no_artifacts)?;
-    println!("\nRemoval and addition take effect only after re-import; browsers keep the old");
-    println!("certificates until then.");
+    println!("\nДобавление и удаление вступают в силу только после повторного импорта;");
+    println!("до этого браузеры используют старые сертификаты.");
     Ok(())
 }
 
@@ -247,7 +247,7 @@ fn warn_uncovered_sans(cfg: &Config, host: &str) {
     for san in rucerts::probe::dns_names(&chain.leaf) {
         let base = san.strip_prefix("*.").unwrap_or(&san);
         if !cfg.covers(base) {
-            println!("  WARNING: leaf also carries SAN '{san}' -- not covered, add it too");
+            println!("  ВНИМАНИЕ: в конечном сертификате есть SAN '{san}' -- он не покрыт, добавьте и его");
         }
     }
 }
@@ -260,29 +260,29 @@ fn ca(ws: &Workspace, action: &CaAction, no_artifacts: bool) -> Result<()> {
         CaAction::List => {
             let list = roots::list(ws)?;
             if list.is_empty() {
-                println!("(none)");
+                println!("(нет)");
             }
             for root in list {
                 println!("{}", root.name);
                 println!(
-                    "    subject : {}",
+                    "    субъект  : {}",
                     subject_cn(&root.cert).unwrap_or_default()
                 );
-                println!("    expires : {}", root.cert.not_after());
+                println!("    истекает : {}", root.cert.not_after());
                 println!(
-                    "    key     : {}...",
+                    "    ключ     : {}...",
                     &pubkey_fingerprint(&root.cert)?[..32]
                 );
                 let cross = ws.cross_cert(&root.name);
                 if cross.exists() {
                     let c = load_cert(&cross)?;
                     println!(
-                        "    cross   : {} (expires {})",
+                        "    кросс    : {} (истекает {})",
                         cross.display(),
                         c.not_after()
                     );
                 } else {
-                    println!("    cross   : MISSING -- run `rucerts resign`");
+                    println!("    кросс    : ОТСУТСТВУЕТ -- выполните `rucerts resign`");
                 }
             }
             Ok(())
@@ -292,21 +292,25 @@ fn ca(ws: &Workspace, action: &CaAction, no_artifacts: bool) -> Result<()> {
             for file in files {
                 match roots::add(ws, file)? {
                     Added::Renewal { existing } => {
-                        println!("{}: same public key as {existing}", file.display());
                         println!(
-                            "  -> The existing cross-certificate already covers this key. \
-                             Nothing must be re-imported; chains keep validating even past \
-                             the original's expiry."
+                            "{}: тот же открытый ключ, что и у {existing}",
+                            file.display()
+                        );
+                        println!(
+                            "  -> Существующий кросс-сертификат уже покрывает этот ключ. \
+                             Переимпортировать ничего не нужно; цепочки продолжат проверяться \
+                             и после истечения оригинала."
                         );
                     }
                     Added::NewKey { name } => {
-                        println!("{}: added as roots/{name}.cer", file.display());
+                        println!("{}: добавлен как roots/{name}.cer", file.display());
                         // Only meaningful once a second root exists; on a fresh workspace
                         // this is simply the first one.
                         if roots::list(ws)?.len() > 1 {
                             println!(
-                                "  A new key, kept alongside the existing root. Both stay \
-                                 constrained; retire the old one once sites have migrated."
+                                "  Новый ключ, оставлен рядом с существующим корнем. Оба \
+                                 остаются ограниченными; выведите старый из обращения, \
+                                 когда сайты перейдут на новый."
                             );
                         }
                         changed = true;
@@ -321,11 +325,11 @@ fn ca(ws: &Workspace, action: &CaAction, no_artifacts: bool) -> Result<()> {
         }
         CaAction::Retire { name } => {
             roots::retire(ws, name)?;
-            println!("retired {name} -> roots/retired/");
+            println!("выведен из обращения {name} -> roots/retired/");
             resign_and_stage(ws, &cfg, no_artifacts)?;
             println!(
-                "\nThe retired cross-certificate is still valid wherever it is installed. \
-                 Run install-certs.ps1 to remove it."
+                "\nВыведенный кросс-сертификат остаётся действительным везде, где он \
+                 установлен. Запустите install-certs.ps1, чтобы удалить его."
             );
             Ok(())
         }
@@ -337,42 +341,43 @@ fn root(ws: &Workspace, action: &RootAction, no_artifacts: bool) -> Result<()> {
     let RootAction::SetCn { cn, yes } = action;
     let cfg = Config::load(ws.dir())?;
 
-    anyhow::ensure!(!cn.contains('/'), "common name must not contain '/'");
+    anyhow::ensure!(!cn.contains('/'), "common name не должен содержать '/'");
     anyhow::ensure!(
         !cn.contains('='),
-        "common name must not contain '=' -- pass the name only, not a full DN"
+        "common name не должен содержать '=' -- передайте только имя, а не полный DN"
     );
     anyhow::ensure!(
         cn.len() <= MAX_CN_BYTES,
-        "common name is {} bytes; the X.509 upper bound is {MAX_CN_BYTES}",
+        "длина common name -- {} байт; предел X.509 -- {MAX_CN_BYTES}",
         cn.len()
     );
 
     if ws.root_cert().exists() {
         let current = load_cert(&ws.root_cert())?;
         println!(
-            "current root : {}",
+            "текущий корень : {}",
             subject_cn(&current).unwrap_or_default()
         );
     }
-    println!("new root     : {cn}");
-    println!("\nThis mints a new key pair and re-signs every cross-certificate.");
-    println!("Any trust store holding the old root must be updated.");
+    println!("новый корень   : {cn}");
+    println!("\nБудет создана новая пара ключей и переподписаны все кросс-сертификаты.");
+    println!("Все хранилища доверия со старым корнем придётся обновить.");
 
     if !yes && !confirm()? {
-        anyhow::bail!("aborted");
+        anyhow::bail!("отменено");
     }
 
     let label = timestamp();
     let backup = ws.backup(&label, &[ws.root_key(), ws.root_cert()])?;
-    println!("backed up -> {}", backup.display());
+    println!("резервная копия -> {}", backup.display());
 
     let (cert, key) = generate_root(cn, cfg.signing.root_days)?;
     let advisory = write_root(ws, &cert, &key)?;
 
     resign_and_stage(ws, &cfg, no_artifacts)?;
     println!(
-        "\nRe-import required. The OLD root is now orphaned; delete it wherever it was trusted."
+        "\nНужен повторный импорт. СТАРЫЙ корень теперь ни к чему не привязан; удалите его \
+         везде, где он был доверенным."
     );
     if let Some(note) = advisory {
         println!("\n{note}");
@@ -385,13 +390,13 @@ fn resign_and_stage(ws: &Workspace, cfg: &Config, no_artifacts: bool) -> Result<
     let roots = roots::list(ws)?;
     anyhow::ensure!(
         !roots.is_empty(),
-        "no certificates in roots/ -- add one with `rucerts ca add`"
+        "в roots/ нет сертификатов -- добавьте командой `rucerts ca add`"
     );
 
     // A fresh workspace has roots but no domains yet. Signing would fail on an empty
     // permitted list, so say what is missing instead of surfacing that as an error.
     if cfg.constraints.permitted_dns.is_empty() {
-        println!("no permitted domains yet -- add one with `rucerts domain add <domain>`");
+        println!("разрешённых доменов пока нет -- добавьте командой `rucerts domain add <домен>`");
         return Ok(());
     }
     ws.ensure_dirs()?;
@@ -414,17 +419,20 @@ fn resign_and_stage(ws: &Workspace, cfg: &Config, no_artifacts: bool) -> Result<
         let (before, after) = (ski_hex(&root.cert), ski_hex(&cross));
         anyhow::ensure!(
             before == after,
-            "SKI changed for {} ({:?} -> {:?}) -- chain building would break",
+            "SKI изменился у {} ({:?} -> {:?}) -- построение цепочки сломается",
             root.name,
             before,
             after
         );
 
         let path = ws.cross_cert(&root.name);
-        std::fs::write(&path, cross.to_pem().context("encoding cross-certificate")?)
-            .with_context(|| format!("writing {}", path.display()))?;
+        std::fs::write(
+            &path,
+            cross.to_pem().context("кодирование кросс-сертификата")?,
+        )
+        .with_context(|| format!("запись {}", path.display()))?;
         println!(
-            "signed {}\n(SKI {})",
+            "подписан {}\n(SKI {})",
             path.display(),
             after.unwrap_or_default()
         );
@@ -436,7 +444,7 @@ fn resign_and_stage(ws: &Workspace, cfg: &Config, no_artifacts: bool) -> Result<
 /// Regenerates the installable artifacts in the workspace.
 fn stage_only(ws: &Workspace, no_artifacts: bool) -> Result<()> {
     if no_artifacts {
-        println!("artifacts not regenerated (--no-artifacts)");
+        println!("файлы для установки не пересоздавались (--no-artifacts)");
         return Ok(());
     }
     let roots = roots::list(ws)?;
@@ -448,15 +456,17 @@ fn stage_only(ws: &Workspace, no_artifacts: bool) -> Result<()> {
 /// Prints what a generation run produced.
 fn report_staged(staged: &stage::Staged) {
     println!(
-        "wrote artifacts for {} root(s), domains: {}",
+        "созданы файлы для установки, корней: {}, домены: {}",
         staged.roots,
         staged.domains.join(", ")
     );
-    println!("  in {}", staged.dir.display());
-    println!("\nRe-import in whichever store you use:");
-    println!("  certmgr.msc : run install-certs.ps1 again (it replaces old copies)");
-    println!("  policy      : re-run constrained-ca-policy.reg as admin, restart Chrome/Edge");
-    println!("  Firefox     : delete the old certs under Authorities, import with NO trust bits");
+    println!("  в {}", staged.dir.display());
+    println!("\nПовторный импорт в том хранилище, которым вы пользуетесь:");
+    println!("  certmgr.msc : запустите install-certs.ps1 ещё раз (он заменит старые копии)");
+    println!(
+        "  политика    : выполните constrained-ca-policy.reg от админа, перезапустите Chrome/Edge"
+    );
+    println!("  Firefox     : удалите старые сертификаты в «Центры сертификации», импортируйте БЕЗ флагов доверия");
 }
 
 /// Reduces a pasted URL to its host.
@@ -470,14 +480,17 @@ fn host_of(raw: &str) -> String {
 }
 
 /// Asks for confirmation on standard input, defaulting to no.
+///
+/// Both the Latin and the Cyrillic affirmative are accepted: the prompt is Russian, but
+/// `y` is what a keyboard left on the English layout produces.
 fn confirm() -> Result<bool> {
-    print!("Proceed? [y/N] ");
-    io::stdout().flush().context("flushing prompt")?;
+    print!("Продолжить? [y/N] ");
+    io::stdout().flush().context("вывод приглашения")?;
     let mut line = String::new();
-    io::stdin().read_line(&mut line).context("reading reply")?;
+    io::stdin().read_line(&mut line).context("чтение ответа")?;
     Ok(matches!(
-        line.trim().to_ascii_lowercase().as_str(),
-        "y" | "yes"
+        line.trim().to_lowercase().as_str(),
+        "y" | "yes" | "д" | "да"
     ))
 }
 

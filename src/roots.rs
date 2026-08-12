@@ -61,15 +61,15 @@ pub fn list(ws: &Workspace) -> Result<Vec<ForeignRoot>> {
     }
 
     let mut out = Vec::new();
-    for entry in fs::read_dir(&dir).with_context(|| format!("reading {}", dir.display()))? {
-        let path = entry.context("reading directory entry")?.path();
+    for entry in fs::read_dir(&dir).with_context(|| format!("чтение {}", dir.display()))? {
+        let path = entry.context("чтение элемента каталога")?.path();
         if !path.is_file() || !has_root_extension(&path) {
             continue;
         }
         let name = path
             .file_stem()
             .and_then(|s| s.to_str())
-            .context("root file name is not valid UTF-8")?
+            .context("имя файла корня не является корректным UTF-8")?
             .to_owned();
         let cert = load_cert(&path)?;
         out.push(ForeignRoot { name, path, cert });
@@ -95,12 +95,12 @@ pub fn add(ws: &Workspace, src: &Path) -> Result<Added> {
 
     anyhow::ensure!(
         is_self_signed(&cert)?,
-        "{} is not self-signed -- an intermediate cannot be cross-signed this way",
+        "{} не самоподписан -- промежуточный сертификат так кросс-подписать нельзя",
         src.display()
     );
     anyhow::ensure!(
         is_ca(&cert)?,
-        "{} is not a CA certificate (basicConstraints CA:TRUE missing)",
+        "{} не является сертификатом УЦ (нет basicConstraints CA:TRUE)",
         src.display()
     );
 
@@ -109,9 +109,9 @@ pub fn add(ws: &Workspace, src: &Path) -> Result<Added> {
         if pubkey_fingerprint(&existing.cert)? == fingerprint {
             // Refresh the stored copy so listings show the new validity, but the
             // cross-certificate itself needs no reissue.
-            let pem = cert.to_pem().context("encoding certificate")?;
+            let pem = cert.to_pem().context("кодирование сертификата")?;
             fs::write(&existing.path, pem)
-                .with_context(|| format!("refreshing {}", existing.path.display()))?;
+                .with_context(|| format!("обновление {}", existing.path.display()))?;
             return Ok(Added::Renewal {
                 existing: existing.name,
             });
@@ -121,17 +121,17 @@ pub fn add(ws: &Workspace, src: &Path) -> Result<Added> {
     let name = sanitise_name(
         src.file_stem()
             .and_then(|s| s.to_str())
-            .context("input file name is not valid UTF-8")?,
+            .context("имя входного файла не является корректным UTF-8")?,
     );
     let dest = ws.roots_dir().join(format!("{name}.cer"));
     anyhow::ensure!(
         !dest.exists(),
-        "roots/{name}.cer already exists with a different key -- rename the input, or retire the old one first"
+        "roots/{name}.cer уже существует с другим ключом -- переименуйте входной файл либо сначала выведите старый из обращения"
     );
 
     ws.ensure_dirs()?;
-    let pem = cert.to_pem().context("encoding certificate")?;
-    fs::write(&dest, pem).with_context(|| format!("writing {}", dest.display()))?;
+    let pem = cert.to_pem().context("кодирование сертификата")?;
+    fs::write(&dest, pem).with_context(|| format!("запись {}", dest.display()))?;
     Ok(Added::NewKey { name })
 }
 
@@ -144,22 +144,22 @@ pub fn retire(ws: &Workspace, name: &str) -> Result<()> {
     let roots = list(ws)?;
     anyhow::ensure!(
         roots.len() > 1,
-        "refusing to retire the only root -- remove the certificates from your trust stores instead"
+        "отказ вывести из обращения единственный корень -- вместо этого удалите сертификаты из своих хранилищ доверия"
     );
     let target = roots
         .into_iter()
         .find(|r| r.name == name)
-        .with_context(|| format!("no root named '{name}' (see `rucerts ca list`)"))?;
+        .with_context(|| format!("нет корня с именем '{name}' (см. `rucerts ca list`)"))?;
 
     let retired = ws.retired_dir();
-    fs::create_dir_all(&retired).with_context(|| format!("creating {}", retired.display()))?;
-    let dest = retired.join(target.path.file_name().context("root has no file name")?);
+    fs::create_dir_all(&retired).with_context(|| format!("создание {}", retired.display()))?;
+    let dest = retired.join(target.path.file_name().context("у корня нет имени файла")?);
     fs::rename(&target.path, &dest)
-        .with_context(|| format!("moving {} aside", target.path.display()))?;
+        .with_context(|| format!("перемещение {}", target.path.display()))?;
 
     let cross = ws.cross_cert(&target.name);
     if cross.exists() {
-        fs::remove_file(&cross).with_context(|| format!("removing {}", cross.display()))?;
+        fs::remove_file(&cross).with_context(|| format!("удаление {}", cross.display()))?;
     }
     Ok(())
 }

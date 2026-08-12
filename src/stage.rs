@@ -80,7 +80,10 @@ pub struct Staged {
 /// If a cross-certificate is missing, the directory cannot be written, or the certificates
 /// disagree about which domains they permit.
 pub fn stage(ws: &Workspace, roots: &[ForeignRoot]) -> Result<Staged> {
-    anyhow::ensure!(!roots.is_empty(), "no roots to write artifacts for");
+    anyhow::ensure!(
+        !roots.is_empty(),
+        "нет корней, для которых создавать файлы установки"
+    );
     let dir = ws.dir();
     clean_stale(dir)?;
 
@@ -92,7 +95,7 @@ pub fn stage(ws: &Workspace, roots: &[ForeignRoot]) -> Result<Staged> {
         let cross_path = ws.cross_cert(&root.name);
         anyhow::ensure!(
             cross_path.exists(),
-            "missing cross-certificate for {} -- run `rucerts resign`",
+            "нет кросс-сертификата для {} -- выполните `rucerts resign`",
             root.name
         );
         let cross = load_cert(&cross_path)?;
@@ -100,15 +103,15 @@ pub fn stage(ws: &Workspace, roots: &[ForeignRoot]) -> Result<Staged> {
         let permitted = permitted_dns(&cross)?;
         anyhow::ensure!(
             !permitted.is_empty(),
-            "{} permits no DNS names -- refusing to stage",
+            "{} не разрешает ни одного DNS-имени -- файлы установки не создаются",
             cross_path.display()
         );
         match &domains {
             None => domains = Some(permitted.clone()),
             Some(first) => anyhow::ensure!(
                 *first == permitted,
-                "cross-certificates disagree on permitted names; the effective policy \
-                 would be their union. Run `rucerts resign`."
+                "кросс-сертификаты расходятся в разрешённых именах; действующей политикой \
+                 стало бы их объединение. Выполните `rucerts resign`."
             ),
         }
 
@@ -131,16 +134,16 @@ fn clean_stale(dir: &Path) -> Result<()> {
     for legacy in LEGACY_FILES {
         let path = dir.join(legacy);
         if path.exists() {
-            fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))?;
+            fs::remove_file(&path).with_context(|| format!("удаление {}", path.display()))?;
         }
     }
-    for entry in fs::read_dir(dir).with_context(|| format!("reading {}", dir.display()))? {
-        let path = entry.context("reading directory entry")?.path();
+    for entry in fs::read_dir(dir).with_context(|| format!("чтение {}", dir.display()))? {
+        let path = entry.context("чтение элемента каталога")?.path();
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
         if name.ends_with("-constrained.crt") || name.ends_with("-original.crt") {
-            fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))?;
+            fs::remove_file(&path).with_context(|| format!("удаление {}", path.display()))?;
         }
     }
     Ok(())
@@ -150,7 +153,7 @@ fn clean_stale(dir: &Path) -> Result<()> {
 fn write_policy(dir: &Path, entries: &[(String, X509, X509, Vec<String>)]) -> Result<()> {
     let mut objects = Vec::new();
     for (_, original, _, permitted) in entries {
-        let der = original.to_der().context("encoding original root")?;
+        let der = original.to_der().context("кодирование исходного корня")?;
         let b64 = base64::engine::general_purpose::STANDARD.encode(&der);
         objects.push(
             json!({
@@ -181,7 +184,7 @@ fn write_policy(dir: &Path, entries: &[(String, X509, X509, Vec<String>)]) -> Re
 
     let path = dir.join("constrained-ca-policy.reg");
     fs::write(&path, to_utf16le_with_bom(&lines.join("\r\n")))
-        .with_context(|| format!("writing {}", path.display()))
+        .with_context(|| format!("запись {}", path.display()))
 }
 
 /// Encodes text as UTF-16 little-endian with a byte order mark.
@@ -219,13 +222,13 @@ fn write_installer(
     // BOM-less file, which mangles a non-ASCII root Common Name.
     let mut bytes = vec![0xEF, 0xBB, 0xBF];
     bytes.extend_from_slice(to_crlf(&filled).as_bytes());
-    fs::write(&path, bytes).with_context(|| format!("writing {}", path.display()))?;
+    fs::write(&path, bytes).with_context(|| format!("запись {}", path.display()))?;
 
     // The wrapper carries no BOM: cmd.exe would try to execute those bytes as part of the
     // first line. It is plain ASCII, so none is needed.
     let cmd_path = dir.join("install-certs.cmd");
     fs::write(&cmd_path, to_crlf(INSTALLER_CMD).as_bytes())
-        .with_context(|| format!("writing {}", cmd_path.display()))
+        .with_context(|| format!("запись {}", cmd_path.display()))
 }
 
 /// Normalises line endings to CRLF, which both PowerShell and `cmd.exe` expect.
@@ -235,7 +238,7 @@ fn to_crlf(text: &str) -> String {
 
 /// Renders one PowerShell hashtable literal holding a certificate.
 fn embed_entry(name: &str, kind: &str, cert: &X509) -> Result<String> {
-    let der = cert.to_der().context("encoding certificate")?;
+    let der = cert.to_der().context("кодирование сертификата")?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&der);
     let wrapped = b64
         .as_bytes()

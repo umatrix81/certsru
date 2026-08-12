@@ -35,12 +35,12 @@ pub struct Report {
 impl Report {
     fn pass(&mut self, message: &str) {
         self.passed += 1;
-        println!("  PASS {message}");
+        println!("  ПРОЙДЕНО {message}");
     }
 
     fn fail(&mut self, message: &str) {
         self.failed += 1;
-        println!("  FAIL {message}");
+        println!("  ПРОВАЛ   {message}");
     }
 
     #[expect(
@@ -48,7 +48,7 @@ impl Report {
         reason = "kept a method for symmetry with pass/fail at call sites"
     )]
     fn skip(&self, message: &str) {
-        println!("  skip {message}");
+        println!("  пропуск  {message}");
     }
 }
 
@@ -61,13 +61,13 @@ pub fn run(ws: &Workspace, cfg: &Config, roots: &[ForeignRoot]) -> Result<Report
     let mut report = Report::default();
     let root_cert = load_cert(&ws.root_cert())?;
 
-    println!("\n1. Cross-certificates and what they permit");
+    println!("\n1. Кросс-сертификаты и что они разрешают");
     let (bundle, permitted) = inspect(ws, roots, &root_cert, &mut report)?;
 
-    println!("\n2. Positive control -- permitted domains that use these CAs");
+    println!("\n2. Положительный контроль -- разрешённые домены, работающие через эти УЦ");
     let probe_material = positive_control(&root_cert, &bundle, &permitted, &mut report)?;
 
-    println!("\n3. Negative control -- same leaf, names removed from the constraint");
+    println!("\n3. Отрицательный контроль -- тот же сертификат, имена убраны из ограничения");
     if let Some((leaf, intermediate)) = probe_material {
         negative_control(
             ws,
@@ -79,14 +79,16 @@ pub fn run(ws: &Workspace, cfg: &Config, roots: &[ForeignRoot]) -> Result<Report
             &mut report,
         )?;
     } else {
-        report.skip("no reachable domain used these CAs, cannot run the negative control");
+        report.skip(
+            "ни один доступный домен не использует эти УЦ, отрицательный контроль невозможен",
+        );
         println!(
-            "        Without this step the audit is incomplete: an over-permissive \
-             certificate still passes everything above."
+            "        Без этого шага проверка неполна: слишком широкий сертификат \
+             всё равно проходит всё, что выше."
         );
     }
 
-    println!("\n4. Competing trust paths for the original roots");
+    println!("\n4. Конкурирующие пути доверия для исходных корней");
     for root in roots {
         let name = crate::x509::subject_cn(&root.cert).unwrap_or_else(|| root.name.clone());
         println!(
@@ -94,8 +96,11 @@ pub fn run(ws: &Workspace, cfg: &Config, roots: &[ForeignRoot]) -> Result<Report
             crate::x509::fingerprint(&root.cert)?
         );
     }
-    println!("  Windows stores: run install-certs.ps1 -- it scans CurrentUser and LocalMachine");
-    println!("  Firefox: about:preferences#privacy > View Certificates > Authorities");
+    println!(
+        "  Хранилища Windows: запустите install-certs.ps1 -- он просматривает CurrentUser \
+         и LocalMachine"
+    );
+    println!("  Firefox: about:preferences#privacy > Просмотр сертификатов > Центры сертификации");
 
     Ok(report)
 }
@@ -113,55 +118,59 @@ fn inspect(
     for root in roots {
         let path = ws.cross_cert(&root.name);
         if !path.exists() {
-            report.fail(&format!("{} has no cross-certificate", root.name));
+            report.fail(&format!("у {} нет кросс-сертификата", root.name));
             continue;
         }
         let cross = load_cert(&path)?;
 
-        let text = String::from_utf8(cross.to_text().context("rendering certificate")?)
-            .context("certificate text was not UTF-8")?;
+        let text = String::from_utf8(cross.to_text().context("вывод сертификата в текст")?)
+            .context("текст сертификата не в UTF-8")?;
         if text.contains("X509v3 Name Constraints: critical") {
-            report.pass(&format!("{} constraints present and critical", root.name));
+            report.pass(&format!(
+                "{}: ограничения присутствуют и критические",
+                root.name
+            ));
         } else {
             report.fail(&format!(
-                "{} constraints missing or not critical -- a verifier that ignores them \
-                 would accept anything",
+                "{}: ограничений нет или они не критические -- проверяющий, который их \
+                 игнорирует, примет что угодно",
                 root.name
             ));
         }
 
         if ski_hex(&cross) == ski_hex(&root.cert) {
-            report.pass(&format!("{} SKI matches the original root", root.name));
+            report.pass(&format!("{}: SKI совпадает с исходным корнем", root.name));
         } else {
             report.fail(&format!(
-                "{} SKI differs -- sub-CA authorityKeyIdentifier will not match",
+                "{}: SKI отличается -- authorityKeyIdentifier промежуточного УЦ не совпадёт",
                 root.name
             ));
         }
 
-        let issuer = cross.issuer_name().to_der().context("issuer DN")?;
-        let subject = root_cert.subject_name().to_der().context("subject DN")?;
+        let issuer = cross.issuer_name().to_der().context("DN издателя")?;
+        let subject = root_cert.subject_name().to_der().context("DN субъекта")?;
         if issuer == subject {
-            report.pass(&format!("{} issued by the local root", root.name));
+            report.pass(&format!("{}: выпущен локальным корнем", root.name));
         } else {
-            report.fail(&format!("{} is not issued by myroot.pem", root.name));
+            report.fail(&format!("{}: выпущен не из myroot.pem", root.name));
         }
 
         let permitted = permitted_dns(&cross)?;
         match &reference {
             None => {
-                println!("  permitted: {}", permitted.join(", "));
-                report.pass(&format!("{} permits {} names", root.name, permitted.len()));
+                println!("  разрешено: {}", permitted.join(", "));
+                report.pass(&format!(
+                    "{}: разрешённых имён -- {}",
+                    root.name,
+                    permitted.len()
+                ));
                 reference = Some(permitted);
             }
             Some(first) if *first == permitted => {
-                report.pass(&format!(
-                    "{} permits the same list as the others",
-                    root.name
-                ));
+                report.pass(&format!("{}: список тот же, что и у остальных", root.name));
             }
             Some(_) => report.fail(&format!(
-                "{} permits a different list -- the effective policy is their union",
+                "{}: список отличается -- действующей политикой будет их объединение",
                 root.name
             )),
         }
@@ -182,11 +191,13 @@ fn positive_control(
 
     for domain in permitted {
         let Ok(chain) = probe::fetch(domain) else {
-            report.skip(&format!("{domain} (unreachable)"));
+            report.skip(&format!("{domain} (недоступен)"));
             continue;
         };
         let Some(intermediate) = chain.intermediates.first().cloned() else {
-            report.skip(&format!("{domain} (server sent no intermediate)"));
+            report.skip(&format!(
+                "{domain} (сервер не прислал промежуточный сертификат)"
+            ));
             continue;
         };
 
@@ -195,7 +206,7 @@ fn positive_control(
 
         match verify_chain(root_cert, &untrusted, &chain.leaf)? {
             Verdict::Valid => {
-                report.pass(&format!("{domain} validates through the constrained chain"));
+                report.pass(&format!("{domain}: проверяется по ограниченной цепочке"));
                 if material.is_none() {
                     material = Some((chain.leaf.clone(), intermediate));
                 }
@@ -203,7 +214,7 @@ fn positive_control(
             Verdict::Rejected(reason) => {
                 let issuer = crate::x509::subject_cn(&intermediate).unwrap_or_default();
                 report.skip(&format!(
-                    "{domain} (chains to a CA we do not constrain: {issuer}; {reason})"
+                    "{domain} (цепочка ведёт к УЦ, который мы не ограничиваем: {issuer}; {reason})"
                 ));
             }
         }
@@ -256,15 +267,15 @@ fn negative_control(
 
     match verify_chain(root_cert, &untrusted, leaf)? {
         Verdict::Rejected(reason) if reason.contains("permitted subtree violation") => {
-            report.pass(&format!("leaf rejected: {reason}"));
-            println!("        => constraints are enforced, not merely present");
+            report.pass(&format!("сертификат отклонён: {reason}"));
+            println!("        => ограничения применяются, а не просто присутствуют");
         }
         Verdict::Rejected(reason) => report.fail(&format!(
-            "leaf was rejected, but for the wrong reason: {reason}. The constraint may not \
-             be what stopped it."
+            "сертификат отклонён, но не по той причине: {reason}. Возможно, остановило его \
+             не ограничение."
         )),
         Verdict::Valid => report
-            .fail("leaf still accepted with its names removed -- constraints are NOT enforced"),
+            .fail("сертификат принят даже после удаления его имён -- ограничения НЕ применяются"),
     }
     Ok(())
 }
@@ -280,24 +291,26 @@ enum Verdict {
 
 /// Validates `leaf` against `anchor`, using `untrusted` as the candidate chain.
 fn verify_chain(anchor: &X509, untrusted: &[X509], leaf: &X509) -> Result<Verdict> {
-    let mut builder = X509StoreBuilder::new().context("building certificate store")?;
+    let mut builder = X509StoreBuilder::new().context("создание хранилища сертификатов")?;
     builder
         .add_cert(anchor.clone())
-        .context("adding trust anchor")?;
+        .context("добавление корня доверия")?;
     let store = builder.build();
 
-    let mut stack = Stack::new().context("building chain stack")?;
+    let mut stack = Stack::new().context("сборка стека цепочки")?;
     for cert in untrusted {
-        stack.push(cert.clone()).context("pushing chain entry")?;
+        stack
+            .push(cert.clone())
+            .context("добавление элемента цепочки")?;
     }
 
-    let mut ctx = X509StoreContext::new().context("creating verification context")?;
+    let mut ctx = X509StoreContext::new().context("создание контекста проверки")?;
     let outcome = ctx
         .init(&store, leaf, &stack, |c| {
             let ok = c.verify_cert()?;
             Ok((ok, c.error().error_string().to_owned()))
         })
-        .context("verifying chain")?;
+        .context("проверка цепочки")?;
 
     Ok(if outcome.0 {
         Verdict::Valid

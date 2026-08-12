@@ -39,10 +39,10 @@ const ROOT_KEY_BITS: u32 = 4096;
 /// # Errors
 /// If the file cannot be read or is not a certificate in either encoding.
 pub fn load_cert(path: &std::path::Path) -> Result<X509> {
-    let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    let bytes = std::fs::read(path).with_context(|| format!("чтение {}", path.display()))?;
     X509::from_pem(&bytes)
         .or_else(|_| X509::from_der(&bytes))
-        .with_context(|| format!("{} is not a PEM or DER certificate", path.display()))
+        .with_context(|| format!("{} не является сертификатом в PEM или DER", path.display()))
 }
 
 /// Loads a private key from a PEM file.
@@ -50,8 +50,8 @@ pub fn load_cert(path: &std::path::Path) -> Result<X509> {
 /// # Errors
 /// If the file cannot be read or does not contain a PEM private key.
 pub fn load_key(path: &std::path::Path) -> Result<PKey<Private>> {
-    let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
-    PKey::private_key_from_pem(&bytes).with_context(|| format!("parsing key {}", path.display()))
+    let bytes = std::fs::read(path).with_context(|| format!("чтение {}", path.display()))?;
+    PKey::private_key_from_pem(&bytes).with_context(|| format!("разбор ключа {}", path.display()))
 }
 
 /// Generates a self-signed local root with the given Common Name.
@@ -59,21 +59,21 @@ pub fn load_key(path: &std::path::Path) -> Result<PKey<Private>> {
 /// # Errors
 /// If `cn` is empty, exceeds [`MAX_CN_BYTES`], or key generation fails.
 pub fn generate_root(cn: &str, days: u32) -> Result<(X509, PKey<Private>)> {
-    anyhow::ensure!(!cn.is_empty(), "common name must not be empty");
+    anyhow::ensure!(!cn.is_empty(), "common name не должен быть пустым");
     anyhow::ensure!(
         cn.len() <= MAX_CN_BYTES,
-        "common name is {} bytes; the X.509 upper bound is {MAX_CN_BYTES}",
+        "длина common name -- {} байт; предел X.509 -- {MAX_CN_BYTES}",
         cn.len()
     );
 
-    let rsa = Rsa::generate(ROOT_KEY_BITS).context("generating root key")?;
-    let key = PKey::from_rsa(rsa).context("wrapping root key")?;
+    let rsa = Rsa::generate(ROOT_KEY_BITS).context("генерация ключа корня")?;
+    let key = PKey::from_rsa(rsa).context("обёртывание ключа корня")?;
 
     let mut name = X509NameBuilder::new()?;
     // Always UTF-8: the shell version needed `openssl req -utf8` here, and without it
     // non-ASCII names were stored double-encoded.
     name.append_entry_by_nid(Nid::COMMONNAME, cn)
-        .context("setting common name")?;
+        .context("установка common name")?;
     let name = name.build();
 
     let mut b = X509Builder::new()?;
@@ -99,7 +99,7 @@ pub fn generate_root(cn: &str, days: u32) -> Result<(X509, PKey<Private>)> {
     b.append_extension(ski)?;
 
     b.sign(&key, MessageDigest::sha256())
-        .context("self-signing root")?;
+        .context("самоподписание корня")?;
     Ok((b.build(), key))
 }
 
@@ -128,7 +128,7 @@ pub fn cross_sign(
 
     let pubkey = original
         .public_key()
-        .context("reading the original's public key")?;
+        .context("чтение открытого ключа исходного сертификата")?;
     b.set_pubkey(&pubkey)?;
 
     // Serials were sequential via index.txt; random removes the CA database entirely.
@@ -161,7 +161,7 @@ pub fn cross_sign(
     b.append_extension(name_constraints_ext(constraints)?)?;
 
     b.sign(root_key, MessageDigest::sha256())
-        .context("signing cross-certificate")?;
+        .context("подпись кросс-сертификата")?;
     Ok(b.build())
 }
 
@@ -181,7 +181,7 @@ pub fn cross_sign(
 pub fn name_constraints_ext(constraints: &Constraints) -> Result<X509Extension> {
     let value = name_constraints_value(constraints)?;
     X509Extension::new_nid(None, None, Nid::NAME_CONSTRAINTS, &value)
-        .with_context(|| format!("encoding nameConstraints from {value:?}"))
+        .with_context(|| format!("кодирование nameConstraints из {value:?}"))
 }
 
 /// Renders the OpenSSL configuration value for `nameConstraints`.
@@ -192,7 +192,7 @@ pub fn name_constraints_ext(constraints: &Constraints) -> Result<X509Extension> 
 pub fn name_constraints_value(constraints: &Constraints) -> Result<String> {
     anyhow::ensure!(
         !constraints.permitted_dns.is_empty(),
-        "no permitted DNS names -- the certificate would trust nothing"
+        "нет разрешённых DNS-имён -- сертификат не доверял бы ничему"
     );
 
     let mut parts = vec!["critical".to_owned()];
@@ -227,8 +227,8 @@ pub fn ski_hex(cert: &X509) -> Option<String> {
 /// # Errors
 /// If the certificate cannot be rendered as text.
 pub fn permitted_dns(cert: &X509) -> Result<Vec<String>> {
-    let text = String::from_utf8(cert.to_text().context("rendering certificate")?)
-        .context("certificate text was not UTF-8")?;
+    let text = String::from_utf8(cert.to_text().context("вывод сертификата в текст")?)
+        .context("текст сертификата не в UTF-8")?;
     Ok(parse_permitted_dns(&text))
 }
 
@@ -274,12 +274,12 @@ fn parse_permitted_dns(text: &str) -> Vec<String> {
 /// # Errors
 /// If either distinguished name or the public key cannot be encoded.
 pub fn is_self_signed(cert: &X509) -> Result<bool> {
-    let subject = cert.subject_name().to_der().context("subject DN")?;
-    let issuer = cert.issuer_name().to_der().context("issuer DN")?;
+    let subject = cert.subject_name().to_der().context("DN субъекта")?;
+    let issuer = cert.issuer_name().to_der().context("DN издателя")?;
     if subject != issuer {
         return Ok(false);
     }
-    let key = cert.public_key().context("public key")?;
+    let key = cert.public_key().context("открытый ключ")?;
     Ok(cert.verify(&key).unwrap_or(false))
 }
 
@@ -288,8 +288,8 @@ pub fn is_self_signed(cert: &X509) -> Result<bool> {
 /// # Errors
 /// If the certificate cannot be rendered as text.
 pub fn is_ca(cert: &X509) -> Result<bool> {
-    let text = String::from_utf8(cert.to_text().context("rendering certificate")?)
-        .context("certificate text was not UTF-8")?;
+    let text = String::from_utf8(cert.to_text().context("вывод сертификата в текст")?)
+        .context("текст сертификата не в UTF-8")?;
     Ok(text.contains("CA:TRUE"))
 }
 
@@ -303,10 +303,10 @@ pub fn is_ca(cert: &X509) -> Result<bool> {
 pub fn pubkey_fingerprint(cert: &X509) -> Result<String> {
     let der = cert
         .public_key()
-        .context("public key")?
+        .context("открытый ключ")?
         .public_key_to_der()
-        .context("encoding public key")?;
-    let digest = openssl::hash::hash(MessageDigest::sha256(), &der).context("hashing key")?;
+        .context("кодирование открытого ключа")?;
+    let digest = openssl::hash::hash(MessageDigest::sha256(), &der).context("хеширование ключа")?;
     Ok(hex(&digest, false))
 }
 
@@ -317,7 +317,7 @@ pub fn pubkey_fingerprint(cert: &X509) -> Result<String> {
 pub fn fingerprint(cert: &X509) -> Result<String> {
     let digest = cert
         .digest(MessageDigest::sha256())
-        .context("hashing cert")?;
+        .context("хеширование сертификата")?;
     Ok(hex(&digest, true))
 }
 
@@ -352,10 +352,10 @@ pub fn subject_cn(cert: &X509) -> Option<String> {
 /// Generates a positive 64-bit serial number.
 fn random_serial() -> Result<Asn1Integer> {
     let mut bytes = [0_u8; 8];
-    rand_bytes(&mut bytes).context("drawing serial bytes")?;
+    rand_bytes(&mut bytes).context("получение байтов серийного номера")?;
     bytes[0] &= 0x7F; // keep the DER INTEGER positive
-    let bn = BigNum::from_slice(&bytes).context("building serial")?;
-    bn.to_asn1_integer().context("encoding serial")
+    let bn = BigNum::from_slice(&bytes).context("сборка серийного номера")?;
+    bn.to_asn1_integer().context("кодирование серийного номера")
 }
 
 #[cfg(test)]
