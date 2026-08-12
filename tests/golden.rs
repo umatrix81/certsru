@@ -29,7 +29,7 @@ fn live_artifacts() -> Option<(
     let root = w.join("myroot.pem");
     let key = w.join("myroot.key");
     let original = w.join("roots/russian_trusted_root_ca.cer");
-    let installed = w.join("constrained/russian_trusted_root_ca.pem");
+    let installed = w.join("constrained/russian_trusted_root_ca-constrained.pem");
 
     if ![&root, &key, &original, &installed]
         .iter()
