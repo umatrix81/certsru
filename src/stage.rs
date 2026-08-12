@@ -82,7 +82,7 @@ pub struct Staged {
 pub fn stage(ws: &Workspace, roots: &[ForeignRoot]) -> Result<Staged> {
     anyhow::ensure!(
         !roots.is_empty(),
-        "нет корней, для которых создавать файлы установки"
+        "нет корневых сертификатов, для которых создавать файлы установки"
     );
     let dir = ws.dir();
     clean_stale(dir)?;
