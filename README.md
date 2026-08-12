@@ -1,336 +1,348 @@
-# Constrained trust for the Russian Trusted Root CA
+# Ограниченное доверие для Russian Trusted Root CA
 
-*[Русская версия](README.ru.md)*
+*[English version](README.en.md)*
 
-Trust a third-party CA for a **fixed list of domains only**, instead of for the
-whole internet.
+Доверять стороннему УЦ **только для фиксированного списка доменов**, а не для
+всего интернета.
 
-The tool's own interface — help text, progress output and error messages — is in
-Russian. This document is in English; the sections below quote the commands, not
-their output.
+Обычная установка `russian_trusted_root_ca.cer` позволяет этому УЦ ручаться за
+*любое* имя хоста. Здесь это сужается: кросс-сертификат с расширением X.509
+`nameConstraints` подписывается локальным корневым сертификатом, и доверие
+выдаётся только этому локальному корню. Цепочки от УЦ Минцифры после этого
+проверяются для разрешённых доменов и отклоняются для всех остальных с ошибкой
+`permitted subtree violation`.
 
-Installing `russian_trusted_root_ca.cer` normally lets that CA vouch for *any*
-hostname. This setup narrows it: a cross-certificate carrying an X.509
-`nameConstraints` extension is signed by a local root, and only that local root
-is trusted. Chains from the Ministry's CA then validate for the permitted
-domains and fail everywhere else with `permitted subtree violation`.
-
-Currently permitted:
-
-```
-sberbank.ru  sbrf.ru  vtb.ru  alfabank.ru  gazprombank.ru  psb.ru  psbank.ru
-```
 
 ---
 
-## How it works
+## Как это работает
 
 ```
-leaf (sberbank.ru)
-  └─ Russian Trusted Sub CA          sent by the server
-       └─ Russian Trusted Root CA    ← our cross-certificate, name-constrained
-            └─ !Root to bypass…      ← our root, the only trusted anchor
+конечный сертификат (sberbank.ru)
+  └─ Russian Trusted Sub CA          присылает сервер
+       └─ Russian Trusted Root CA    ← наш кросс-сертификат с ограничением имён
+            └─ !Root to bypass…      ← наш корень, единственный доверенный якорь
 ```
 
-The cross-certificate re-issues the Ministry's root under our own root, keeping
-its Subject DN and public key byte-identical, and adds `nameConstraints`. Two
-properties make it work:
+Кросс-сертификат переиздаёт корневой сертификат Минцифры под нашим собственным корневым сертификатом,
+сохраняя его Subject DN и открытый ключ побайтово, и добавляет `nameConstraints`.
+Работает это благодаря двум свойствам:
 
-- **Subject DN preserved** — the sub CA's `issuer` field must match it exactly,
-  or chain building fails. The DN is copied from the original's parsed name rather
-  than rebuilt from strings, which guarantees this.
-- **SKI preserved** — the sub CA's `authorityKeyIdentifier` must match the
-  cross-cert's `subjectKeyIdentifier`. Same public key ⇒ same hash, checked
-  automatically on every re-sign.
+- **Subject DN сохранён** — поле `issuer` промежуточного УЦ должно совпадать с
+  ним точно, иначе цепочка не построится. DN копируется из разобранного имени
+  оригинала, а не собирается заново из строк, что это и гарантирует.
+- **SKI сохранён** — `authorityKeyIdentifier` промежуточного УЦ должен совпадать
+  с `subjectKeyIdentifier` кросс-сертификата. Тот же открытый ключ ⇒ тот же хеш;
+  проверяется автоматически при каждой переподписи.
 
-No private key from the Ministry is needed: only its *public* key is re-signed,
-copied verbatim out of its own self-signed certificate.
+Закрытый ключ Минцифры не нужен: переподписывается только её *открытый* ключ,
+скопированный дословно из её же самоподписанного сертификата.
 
-**Chrome and Edge don't need any of this.** They support
-`CACertificatesWithConstraints` (Chrome 131+), which applies constraints to the
-original certificate via policy. The cross-certificate exists for Firefox and
-for system-wide trust. Both mechanisms are generated here; pick one.
+**Chrome и Edge во всём этом не нуждаются.** Они поддерживают
+`CACertificatesWithConstraints` (Chrome 131+), который применяет ограничения к
+исходному сертификату через политику. Кросс-сертификат нужен для Firefox и для
+общесистемного доверия. Здесь создаётся и то, и другое; выберите одно.
 
 ---
 
-## Layout
+## Раскладка файлов
 
-| Path | What |
+| Путь | Что это |
 |---|---|
-| `roots/` | Foreign CA roots to constrain |
-| `roots/retired/` | Roots no longer constrained |
-| `constrained/` | One cross-certificate per root, `<name>-constrained.pem` |
-| `rucerts.toml` | Permitted domains and signing parameters |
-| `myroot.pem` / `myroot.key` | Local root. **The key is the crown jewel.** |
-| `src/`, `tests/`, `Cargo.toml` | The `rucerts` tool |
-| `templates/` | Installer source (`.ps1`) and its `.cmd` wrapper, compiled into the binary |
-| `backup-*/` | Automatic backups from `rucerts root set-cn` |
-| `legacy/` | The superseded shell implementation, kept for reference |
+| `roots/` | Корневые сертификаты сторонних УЦ, которые ограничиваем |
+| `roots/retired/` | Корни, выведенные из обращения |
+| `constrained/` | По одному кросс-сертификату на корень, `<имя>-constrained.pem` |
+| `rucerts.toml` | Разрешённые домены и параметры подписи |
+| `myroot.pem` / `myroot.key` | Локальный корневой сертификат. **Ключ — самое ценное.** |
+| `src/`, `tests/`, `Cargo.toml` | Сам инструмент `rucerts` |
+| `templates/` | Исходник установщика (`.ps1`) и обёртка `.cmd`, вшиты в бинарник |
+| `backup-*/` | Автоматические резервные копии от `rucerts root set-cn` |
+| `legacy/` | Прежняя реализация на shell, оставлена для справки |
 
-Generated into the workspace, ready to install or share:
+Создаётся в рабочей области, готово к установке или передаче:
 
-| File | Use |
+| Файл | Назначение |
 |---|---|
-| `install-certs.ps1` | **Self-contained** — certificates embedded, share this alone |
-| `install-certs.cmd` | Double-clickable wrapper; send it alongside the `.ps1` |
-| `constrained-ca-policy.reg` | Chrome/Edge policy, uses the *original* root |
+| `install-certs.ps1` | **Самодостаточный** — сертификаты вшиты, можно передавать отдельно |
+| `install-certs.cmd` | Обёртка для запуска двойным щелчком; передавать вместе с `.ps1` |
+| `constrained-ca-policy.reg` | Политика Chrome/Edge, использует *исходный* корень |
 
-Three files, not a directory full of them. Loose `.crt` copies are deliberately not
-written: they duplicated `myroot.pem`, `constrained/*-constrained.pem` and `roots/*` byte for byte,
-and all of them are already inside the installer. When Firefox needs files to import:
+Три файла, а не каталог, забитый ими. Отдельные копии `.crt` намеренно не
+пишутся: они побайтово дублировали `myroot.pem`, `constrained/*-constrained.pem`
+и `roots/*`, и все они уже внутри установщика. Когда Firefox нужны файлы для
+импорта:
 
 ```powershell
 .\install-certs.ps1 -Export .\certs
 ```
 
-These are outputs: every one is rewritten from the certificates on each run, so edits to
-them are lost. Edit the files in `templates/` and rebuild to change the installer.
+Это выходные данные: каждый файл переписывается из сертификатов при каждом
+запуске, так что правки в них теряются. Чтобы изменить установщик, правьте файлы
+в `templates/` и пересобирайте.
 
 ---
 
-## Commands
+## Команды
 
-Everything is one binary. Build it once with `cargo build --release`; the examples
-below assume `target/release/rucerts` is on your path.
+Всё в одном бинарнике. Соберите один раз через `cargo build --release`; примеры
+ниже предполагают, что `target/release/rucerts` есть в PATH.
 
-Global flags: `--dir <workspace>` (defaults to the current directory) and
-`--no-artifacts` to skip regenerating the installable files.
+Глобальные флаги: `--dir <рабочая область>` (по умолчанию текущий каталог) и
+`--no-artifacts`, чтобы не пересоздавать файлы для установки.
 
-Help is available as `rucerts --help` and `rucerts <command> --help`. There is no
-`rucerts help <command>` form: clap's generated `help` subcommand carries English
-text that cannot be replaced, so it is switched off.
+Справка доступна как `rucerts --help` и `rucerts <команда> --help`. Формы
+`rucerts help <команда>` нет: подкоманда `help`, которую генерирует clap, несёт
+английский текст, заменить его нельзя, поэтому она отключена.
 
-### Domains
+### Домены
 
 ```bash
-rucerts domain add sberbank.ru            # add (accepts a pasted URL too)
-rucerts domain remove gazprombank.ru      # remove
+rucerts domain add sberbank.ru            # добавить (принимает и вставленный URL)
+rucerts domain remove gazprombank.ru      # убрать
 rucerts domain list
-rucerts resign                            # re-sign all roots, no list change
-rucerts artifacts                         # regenerate installable files only
+rucerts resign                            # переподписать все корни, список не менять
+rucerts artifacts                         # только пересоздать файлы для установки
 ```
 
-Adding re-signs every cross-certificate and regenerates the artifacts. It fetches the
-target's certificate and warns about **sibling SAN entries** — a leaf fails
-unless *every* SAN name is permitted, which is why `sbrf.ru` is listed alongside
-`sberbank.ru`.
+Добавление переподписывает каждый кросс-сертификат и заново создаёт файлы для
+установки. При этом сертификат целевого узла загружается, и вы получаете
+предупреждение о **соседних записях SAN** — конечный сертификат не пройдёт
+проверку, если разрешено не *каждое* имя из SAN. Именно поэтому рядом с
+`sberbank.ru` в списке стоит `sbrf.ru`.
 
-Removal takes exact entries only; `www.psbank.ru` is covered by the `psbank.ru`
-subtree, so remove the parent. It refuses to empty the list, and a batch that
-would is rejected whole rather than applied partially.
+Удаление принимает только точные записи; `www.psbank.ru` покрыт поддеревом
+`psbank.ru`, поэтому удаляйте родителя. Опустошить список инструмент откажется, а
+пакет команд, который к этому привёл бы, отклоняется целиком, а не применяется
+частично.
 
-### CA rotation
+### Смена корневого сертификата УЦ
 
 ```bash
-rucerts ca list                           # roots, key fingerprints, cross-cert status
-rucerts ca add new_root.cer               # add a root, or detect a renewal
-rucerts ca retire <name>                  # stop constraining one
+rucerts ca list                           # корневые сертификаты, отпечатки ключей, статус кросс-сертификата
+rucerts ca add new_root.cer               # добавить корневой сертификат
+rucerts ca retire <имя>                   # перестать ограничивать один из них
 ```
 
-Two cases, told apart by comparing public keys:
+Два случая, различаются сравнением открытых ключей:
 
-- **Same key, new dates** — nothing to do. The cross-certificate carries its own
-  validity signed by your root, so chains keep working even past the original's
-  expiry. Only the on-disk copy is refreshed.
-- **New key** — added *alongside* the old one. Both stay constrained until sites
-  finish migrating; retire the old one afterwards.
+- **Тот же ключ, новые даты** — делать нечего. Кросс-сертификат несёт свой
+  собственный срок действия, подписанный вашим корнем, поэтому цепочки работают
+  и после истечения оригинала. Обновляется только копия на диске.
+- **Новый ключ** — добавляется *рядом* со старым. Оба остаются ограниченными,
+  пока сайты не перейдут на новый; после этого старый выводится из обращения.
 
-Input may be PEM or DER. Anything that is not a self-signed CA is rejected: an
-intermediate cannot be cross-signed this way.
+Вход принимается в PEM или DER. Всё, что не является самоподписанным УЦ,
+отклоняется: промежуточный сертификат так кросс-подписать нельзя.
 
-### Rename the local root
+`rucerts ca retire <имя>` переносит корневой сертификат в `roots/retired/`, удаляет его
+кросс-сертификат и пересоздаёт файлы для установки уже без него. Отзыва при этом
+не происходит: ранее выданный кросс-сертификат остаётся действительным везде,
+где он установлен, до истечения срока — чтобы его убрать, запустите
+`install-certs.ps1` заново. Вывести из обращения единственный корневой сертификат
+инструмент откажется.
+
+### Переименование локального корневого сертификата
 
 ```bash
-rucerts root set-cn "New Common Name"     # prompts before proceeding
-rucerts root set-cn "New Common Name" -y
+rucerts root set-cn "Новое общее имя"      # спросит подтверждение
+rucerts root set-cn "Новое общее имя" -y
 ```
 
-Mints a **new key pair**, re-signs everything, backs up the old material to
-`backup-<timestamp>/`. The old root becomes orphaned — remove it from every
-trust store and re-import. Cheap before install, disruptive after.
+Создаёт **новую пару ключей**, всё переподписывает, старый материал сохраняет в
+`backup-<метка времени>/`. Старый корневой сертификат остаётся не у дел — удалите его из всех
+хранилищ доверия и импортируйте заново. Дёшево до установки, болезненно после.
 
-Non-ASCII names are stored as `UTF8String`; the 64-byte X.509 limit is checked in
-bytes, not characters.
+Имена не из ASCII хранятся как `UTF8String`; предел X.509 в 64 байта проверяется
+в байтах, а не в символах — кириллица считается по 2 байта на символ.
 
-### Verify
+### Проверка
 
 ```bash
 rucerts verify
 ```
 
-Four sections: extension inspection (critical flag, SKI, issuer, list
-consistency across roots), live positive control against real sites, a
-**negative control**, and the original roots' fingerprints for a trust-store
-sweep. Exits non-zero if any check fails.
+Четыре раздела: разбор расширений (флаг critical, SKI, издатель, согласованность
+списка между корневыми сертификатами), положительный контроль на живых сайтах, 
+**отрицательный контроль** и отпечатки исходных корней для обхода хранилищ доверия.
+Если хоть одна проверка провалена, код возврата ненулевой.
 
-The negative control is the only step that proves anything. It builds a
-throwaway cross-certificate in memory with the probe domain's names removed and
-re-checks the same real leaf, requiring `permitted subtree violation`
-specifically — not merely that validation failed. Without it, a certificate that
-permits *everything* looks identical to a working one.
+Отрицательный контроль — единственный шаг, который что-то доказывает. Он строит
+в памяти одноразовый кросс-сертификат, из которого убраны имена проверяемого
+домена, и заново проверяет тот же настоящий конечный сертификат, требуя именно
+`permitted subtree violation`, а не просто факт неудачной проверки. Без этого
+сертификат, разрешающий *всё*, выглядит точно так же, как рабочий.
 
-### Bootstrap a new workspace
+### Создание новой рабочей области
 
 ```bash
-rucerts init --cn "My Constraining Root"
-rucerts ca add /path/to/some_root.cer
+rucerts init --cn "Мой ограничивающий сертификат"
+rucerts ca add /путь/к/some_root.cer
 rucerts domain add example.com
 ```
 
-### Install on Windows — `install-certs.ps1`
+### Установка в Windows — `install-certs.ps1`
 
-Windows client machines default to a `Restricted` execution policy, so a `.ps1` cannot be
-started by double-clicking it. `install-certs.cmd` exists for that: `.cmd` files are not
-policy-gated, and it invokes PowerShell with `-ExecutionPolicy Bypass` for that one
-process, leaving the machine's policy alone. It also clears the zone marker that files
-arriving by browser, mail or network share carry.
+На клиентских Windows политика выполнения по умолчанию `Restricted`, поэтому
+`.ps1` нельзя запустить двойным щелчком. Для этого и существует
+`install-certs.cmd`: файлы `.cmd` политикой не ограничиваются, а PowerShell он
+вызывает с `-ExecutionPolicy Bypass` только для этого одного процесса, не трогая
+политику машины. Он же снимает метку зоны, которую несут файлы, пришедшие через
+браузер, почту или сетевую папку.
 
-Double-clicked with no arguments it prints the certificates and thumbprints, then asks
-before installing. Arguments pass straight through, so `install-certs.cmd -Machine` and
-`install-certs.cmd -Uninstall` behave like the `.ps1` equivalents.
+Запущенный двойным щелчком без аргументов он сначала печатает сертификаты и их
+отпечатки, а потом спрашивает разрешение на установку. Аргументы передаются
+насквозь, поэтому `install-certs.cmd -Machine` и `install-certs.cmd -Uninstall`
+работают так же, как их аналоги у `.ps1`.
 
-Running the `.ps1` directly still requires:
+Прямой запуск `.ps1` по-прежнему требует:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install-certs.ps1
 ```
 
 ```powershell
-.\install-certs.ps1 -ShowOnly              # print certs + thumbprints, install nothing
-.\install-certs.ps1                        # install into CurrentUser
-.\install-certs.ps1 -Machine               # LocalMachine, needs elevation
-.\install-certs.ps1 -WhatIf                # dry run
-.\install-certs.ps1 -Export .\certs        # write .crt files out (for Firefox)
-.\install-certs.ps1 -RemoveUnconstrained   # also delete an unconstrained original
-.\install-certs.ps1 -Uninstall             # remove everything it installed
+.\install-certs.ps1 -ShowOnly              # показать сертификаты и отпечатки, ничего не ставить
+.\install-certs.ps1                        # установить в CurrentUser
+.\install-certs.ps1 -Machine               # в LocalMachine, нужны права администратора
+.\install-certs.ps1 -WhatIf                # холостой прогон
+.\install-certs.ps1 -Export .\certs        # выгрузить файлы .crt (для Firefox)
+.\install-certs.ps1 -RemoveUnconstrained   # заодно удалить неограниченный оригинал
+.\install-certs.ps1 -Uninstall             # удалить всё, что он установил
 ```
 
-Puts `myroot` in **Root** and every cross-certificate in **Intermediate
-Certification Authorities** — the split is the mechanism, not cosmetics. A
-cross-certificate in `Root` becomes a trust anchor and defeats the design.
+Кладёт `myroot` в **Доверенные корневые центры сертификации**, а каждый
+кросс-сертификат — в **Промежуточные центры сертификации**. Это разделение и есть
+механизм, а не косметика: кросс-сертификат, попавший в корневое хранилище,
+становится якорем доверия и разрушает всю схему.
 
-Certificates it installs are tagged via `FriendlyName` (`[constrained-ru]`), so
-re-running finds and replaces its own earlier copies even after the root's CN
-has changed. It aborts if a cross-certificate's issuer doesn't match the root,
-and if an **unconstrained** original is trusted anywhere.
+Установленные сертификаты помечаются через `FriendlyName` (`[constrained-ru]`),
+поэтому повторный запуск находит и заменяет свои же прежние копии даже после
+смены CN корня. Скрипт прерывается, если издатель кросс-сертификата не совпадает
+с корнем, а также если где-либо доверенным оказался **неограниченный** оригинал.
 
-Windows raises its own warning dialog when a root certificate is added to
-`CurrentUser\Root`. That prompt is the operating system asking whether you really mean to
-grant a new trust anchor authority over your browsing, and it cannot be suppressed — nor
-should it be. Installing with `-Machine` from an elevated shell writes to
-`LocalMachine\Root` without it, but trades it for a UAC prompt: the same consent, asked
-once instead of once per user.
+Windows показывает собственное предупреждение при добавлении корневого
+сертификата в `CurrentUser\Root`. Это операционная система спрашивает, правда ли
+вы хотите дать новому якорю доверия власть над вашим просмотром сайтов; подавить
+его нельзя — да и не нужно. Установка с `-Machine` из сеанса с повышенными
+правами пишет в `LocalMachine\Root` без этого запроса, но взамен появляется
+запрос UAC: то же согласие, спрошенное один раз вместо одного раза на каждого
+пользователя.
 
 ---
 
-## Workflows
+## Сценарии
 
-### First install
+### Первая установка
 
 ```bash
-rucerts verify                   # confirm the pair is sound before trusting it
-rucerts artifacts                # ensure the installable files are current
+rucerts verify                   # убедиться, что пара исправна, прежде чем доверять
+rucerts artifacts                # убедиться, что файлы для установки актуальны
 ```
 
-Then on Windows:
+Затем в Windows:
 
 ```powershell
-cd <workspace>
+cd <рабочая область>
 .\install-certs.ps1 -ShowOnly
 .\install-certs.ps1
 ```
 
-Restart Chrome and Edge. For Firefox:
+Перезапустите Chrome и Edge. Для Firefox:
 
 ```powershell
 .\install-certs.ps1 -Export .\certs
 ```
 
-`about:preferences#connectionSecurity` → View Certificates → **Authorities** → Import:
+«Настройки» → «Приватность и защита» → «Сертификаты» → «Просмотр сертификатов» →
+вкладка **«Центры сертификации»** → «Импортировать…»:
 
-1. `myroot.crt` — check **"Trust this CA to identify websites"**
-2. every `*-constrained.crt` — leave **all boxes unchecked**
+1. `myroot.crt` — поставить галочку **«Доверять при идентификации веб-сайтов»**
+2. каждый `*-constrained.crt` — **не ставить ни одной галочки**
 
-The second is not a mistake. It is stored without trust bits and used only for
-path building; its trust flows from `myroot.crt`. Restart Firefox.
+Второе не ошибка. Такой сертификат хранится без флагов доверия и используется
+только для построения пути; доверие к нему приходит от `myroot.crt`.
+Перезапустите Firefox.
 
-Everything directly inside the export directory is meant to be imported. The
-unconstrained originals are written to `certs\do-not-import\` instead, because
-importing one with trust bits is the exact failure this design prevents and the
-import dialog gives no hint which file is which. They are exported at all only so
-a trust-store sweep and the installer's own check have something to compare
-against.
+Всё, что лежит непосредственно в каталоге экспорта, предназначено для импорта.
+Неограниченные оригиналы пишутся отдельно, в `certs\do-not-import\`: импорт
+такого сертификата с флагами доверия — ровно та беда, ради предотвращения которой
+всё это и сделано, а диалог импорта никак не подсказывает, какой файл есть какой.
+Выгружаются они вообще только затем, чтобы обходу хранилищ доверия и собственной
+проверке установщика было с чем сравнивать.
 
-### Chrome/Edge via policy instead
+### Вариант через политику Chrome/Edge
 
-Run `constrained-ca-policy.reg` as admin, restart the browser, confirm at
-`chrome://policy` that `CACertificatesWithConstraints` shows **OK**. This path
-uses the *original* root and ignores the cross-certificate entirely — do not run
-both mechanisms unless you want two places to update.
+Запустите `constrained-ca-policy.reg` от администратора, перезапустите браузер и
+убедитесь на `chrome://policy`, что `CACertificatesWithConstraints` показывает
+**OK**. Этот путь использует *исходный* корень и полностью игнорирует
+кросс-сертификат — не включайте оба механизма сразу, если не хотите обновлять всё
+в двух местах.
 
-### Adding a domain
+### Добавление домена
 
 ```bash
-rucerts domain add newsite.ru    # watch for SAN warnings
+rucerts domain add newsite.ru    # следите за предупреждениями о SAN
 ```
 
-Then re-run `install-certs.ps1` (Windows), or re-run the `.reg` and restart
-(policy), or delete and re-import in Firefox. `myroot` never changes, so it is
-imported exactly once, ever.
+Затем заново запустите `install-certs.ps1` (Windows), либо заново примените
+`.reg` и перезапустите браузер (политика), либо удалите и импортируйте заново в
+Firefox. `myroot` не меняется никогда, поэтому импортируется ровно один раз.
 
-### Checking it still works
+### Проверка, что всё ещё работает
 
 ```bash
 rucerts verify
 ```
 
-In the browser, open a permitted site → padlock → certificate viewer → select
-the top certificate. **Issued by** must read your root's CN. If the Russian root
-appears self-issued, an unconstrained copy is trusted somewhere and the
-constraint is being bypassed.
+В браузере откройте разрешённый сайт → замок → просмотр сертификата → выберите
+самый верхний сертификат. В поле **«Кем выдан»** должен стоять CN вашего корня.
+Если корень Минцифры выглядит самоподписанным, значит где-то доверенной осталась
+неограниченная копия и ограничение обходится.
 
 ---
 
-## Security notes
+## О безопасности
 
-**`myroot.key` is the whole trust decision.** Anyone holding it can issue
-certificates for the permitted domains that your browsers will accept. Keep it
-`0600`, never distribute it, and never embed it. `rucerts root set-cn` backs it up in
-plaintext under `backup-*/` — delete those once you're satisfied.
+**`myroot.key` — это и есть всё решение о доверии.** Любой, у кого он есть,
+может выпускать сертификаты для разрешённых доменов, и ваши браузеры их примут.
+Держите его с правами `0600`, не распространяйте и никуда не вшивайте.
+`rucerts root set-cn` сохраняет его резервную копию в открытом виде в
+`backup-*/` — удалите эти копии, когда убедитесь, что всё в порядке.
 
-**Sharing `install-certs.ps1` asks people to trust *you*.** It embeds only
-public certificates, but installing it makes your root an anchor on their
-machine, and you hold the key. The constraints bound that to the permitted
-domains — real, and worth stating — but they don't remove you as a trusted
-party. Have recipients run `-ShowOnly` and check thumbprints out of band.
+**Передавая `install-certs.ps1`, вы просите людей доверять *вам*.** В него вшиты
+только публичные сертификаты, но его установка делает ваш корневой сертификат доверенным
+на чужой машине, а ключ — у вас. Ограничения сводят это к разрешённым доменам —
+это правда и об этом стоит сказать, — но они не убирают вас из числа доверенных
+сторон. Пусть получатели запустят `-ShowOnly` и сверят отпечатки по другому
+каналу.
 
-**One unconstrained copy voids everything.** If the original root is trusted
-anywhere — Windows stores, `/usr/local/share/ca-certificates`, a Firefox
-profile — path building routes around your cross-certificate and the constraints
-enforce nothing. `install-certs.ps1` and `rucerts verify` both surface this.
-Never install `*-original.crt`; it exists only so the check has something
-to compare against.
+**Одна неограниченная копия обнуляет всё.** Если исходный корневой сертификат доверен
+где-либо — в хранилищах Windows, в `/usr/local/share/ca-certificates`, в профиле
+Firefox — построение пути обойдёт ваш кросс-сертификат, и ограничения не будут
+значить ничего. И `install-certs.ps1`, и `rucerts verify` это показывают. Никогда
+не устанавливайте `*-original.crt`; он существует лишь для того, чтобы проверке
+было с чем сравнивать.
 
-**Constraint types not listed are unconstrained.** `rucerts.toml` therefore
-excludes IP, email, and URI explicitly, and the Chrome policy pins
-`permitted_cidrs` to `127.0.0.1/32`. Removing those lines silently widens the
-CA's authority to any bare-IP certificate.
+**Типы ограничений, которые не перечислены, считаются неограниченными.** Поэтому
+`rucerts.toml` явно исключает IP, email и URI, а политика Chrome фиксирует
+`permitted_cidrs` в `127.0.0.1/32`. Удаление этих строк молча расширяет
+полномочия УЦ до любого сертификата на голый IP-адрес.
 
 ---
 
-## Troubleshooting
+## Если что-то не работает
 
-| Symptom | Cause |
+| Симптом | Причина |
 |---|---|
-| `permitted subtree violation` on a site you added | A sibling SAN isn't covered. Check the leaf's full SAN. |
-| `unable to get local issuer certificate` | Server sent a sub CA you don't have, or the cross-cert isn't installed as an intermediate. |
-| Site works but the constraint seems ignored | An unconstrained original is trusted. Check every store. |
-| Chain breaks after a re-sign | SKI mismatch — `rucerts resign` aborts on this; don't bypass it. |
-| Cyrillic root name shows as mojibake | A pre-Rust certificate. Re-run `rucerts root set-cn`. |
-| `Access is denied` setting FriendlyName | Cosmetic only; the certificate installed fine. |
-| Chrome policy shows "ignored" | Chrome older than 131, or the JSON is malformed. |
+| `permitted subtree violation` на добавленном сайте | Не покрыто соседнее имя из SAN. Проверьте полный SAN конечного сертификата. |
+| `unable to get local issuer certificate` | Сервер прислал промежуточный УЦ, которого у вас нет, либо кросс-сертификат не установлен как промежуточный. |
+| Сайт работает, но ограничение будто игнорируется | Где-то доверен неограниченный оригинал. Проверьте все хранилища. |
+| Цепочка ломается после переподписи | Расхождение SKI — `rucerts resign` на этом прерывается; не обходите это. |
+| Кириллическое имя корня выглядит как мусор | Сертификат от версии до перехода на Rust. Выполните `rucerts root set-cn` заново. |
+| `Access is denied` при установке FriendlyName | Только косметика; сертификат установлен нормально. |
+| Политика Chrome показывает «ignored» | Chrome старее 131 либо JSON испорчен. |
 
-Manual chain check:
+Ручная проверка цепочки:
 
 ```bash
 openssl s_client -connect sberbank.ru:443 -servername sberbank.ru -showcerts \
@@ -342,29 +354,29 @@ openssl verify -CAfile myroot.pem -untrusted /tmp/unt.pem /tmp/c_0.pem
 
 ---
 
-## Requirements
+## Что нужно для сборки
 
-A Rust toolchain and OpenSSL development headers (`libssl-dev`) to build; the
-resulting binary needs no `openssl` executable at runtime. Windows side:
-PowerShell 5.1+, Chrome/Edge 131+ for the policy route. Staging assumes WSL with
-the Windows drive mounted.
+Тулчейн Rust и заголовки OpenSSL (`libssl-dev`) для сборки; готовому бинарнику
+исполняемый файл `openssl` во время работы не нужен. Со стороны Windows:
+PowerShell 5.1+, Chrome/Edge 131+ для варианта с политикой. Сборка файлов
+предполагает WSL с примонтированным диском Windows.
 
 ```bash
 cargo build --release      # target/release/rucerts
-cargo test                 # includes parity checks against the installed certificate
+cargo test                 # включая проверки совпадения с установленным сертификатом
 ```
 
 ### Windows
 
-Windows ships no system OpenSSL, so the `vendored` feature builds and statically links
-it. That needs a C compiler, `perl` and `nasm` on PATH.
+В Windows нет системного OpenSSL, поэтому функция `vendored` собирает и
+статически линкует его. Для этого нужны компилятор C, `perl` и `nasm` в PATH.
 
 ```powershell
 cargo build --release --features vendored
 ```
 
-Cross-compiling from WSL works too, and produces a standalone `.exe` with no DLL
-dependencies:
+Кросс-компиляция из WSL тоже работает и даёт самостоятельный `.exe` без
+зависимостей от DLL:
 
 ```bash
 rustup target add x86_64-pc-windows-gnu
@@ -372,22 +384,24 @@ sudo apt install mingw-w64 perl nasm
 cargo build --release --target x86_64-pc-windows-gnu --features vendored
 ```
 
-Running the tool on Windows is the more natural arrangement: everything it generates
-lands in the workspace, and `install-certs.ps1` runs from right there.
+Запускать инструмент прямо в Windows удобнее: всё, что он создаёт, оказывается в
+рабочей области, и `install-certs.ps1` запускается оттуда же.
 
-One caveat: Windows has no mode bits, so `myroot.key` inherits its folder's ACL rather
-than being forced to owner-only. Under `C:\Users\<you>\` that is already private; anywhere
-else, the tool prints the `icacls` command to lock it down.
+Одна оговорка: в Windows нет битов прав доступа, поэтому `myroot.key` наследует
+ACL своей папки, а не жёстко ограничивается владельцем. Под `C:\Users\<вы>\` это
+уже приватно; в любом другом месте инструмент печатает команду `icacls`, которой
+доступ можно закрыть.
 
-The `legacy/` directory holds the shell implementation this replaced, along with
-the `cross.cnf` and OpenSSL CA database it used. Nothing reads them any more;
-they are kept because this directory is not under version control. The shell
-version copied its output to a separate Windows directory; the Rust tool writes
-into the workspace instead, so any old copy of that directory is now orphaned.
+Каталог `legacy/` хранит реализацию на shell, которую всё это заменило, вместе с
+её `cross.cnf` и базой УЦ OpenSSL. Их больше ничто не читает; они оставлены
+потому, что этот каталог не под контролем версий. Версия на shell копировала свой
+результат в отдельный каталог Windows; инструмент на Rust пишет в рабочую
+область, поэтому любая старая копия того каталога теперь не нужна.
 
-It also holds `russian_trusted_sub_ca.cer`, a **superseded** Russian Trusted Sub
-CA. Its Subject Key Identifier is `D1:E1:71:0D:…`, while the intermediate these
-servers actually send today is `77:3D:D9:39:…` — the same Subject DN with a
-different key. Do not install it. Servers supply their own intermediate during
-the handshake, which is precisely why the *root* is cross-signed rather than the
-sub CA: that choice survives sub-CA rotation without any action.
+Там же лежит `russian_trusted_sub_ca.cer` — **устаревший** Russian Trusted Sub
+CA. Его Subject Key Identifier — `D1:E1:71:0D:…`, тогда как промежуточный
+сертификат, который эти серверы присылают сегодня, — `77:3D:D9:39:…`: тот же
+Subject DN с другим ключом. Не устанавливайте его. Серверы присылают свой
+промежуточный сертификат сами во время рукопожатия — именно поэтому
+кросс-подписывается *корень*, а не промежуточный УЦ: такой выбор переживает смену
+промежуточного УЦ без каких-либо действий.
