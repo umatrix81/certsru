@@ -398,7 +398,9 @@ fn resign_and_stage(ws: &Workspace, cfg: &Config, no_artifacts: bool) -> Result<
     // A fresh workspace has roots but no domains yet. Signing would fail on an empty
     // permitted list, so say what is missing instead of surfacing that as an error.
     if cfg.constraints.permitted_dns.is_empty() {
-        println!("\nразрешённых доменов пока нет -- добавьте командой `rucerts domain add <домен>`\n");
+        println!(
+            "\nразрешённых доменов пока нет -- добавьте командой `rucerts domain add <домен>`\n"
+        );
         return Ok(());
     }
     ws.ensure_dirs()?;

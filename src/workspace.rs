@@ -56,7 +56,8 @@ impl Workspace {
 
     /// Path of the cross-certificate generated for the root named `name`.
     pub fn cross_cert(&self, name: &str) -> PathBuf {
-        self.constrained_dir().join(format!("{name}-constrained.pem"))
+        self.constrained_dir()
+            .join(format!("{name}-constrained.pem"))
     }
 
     /// Path of the PowerShell installer template.
