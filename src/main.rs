@@ -95,7 +95,7 @@ fn init(ws: &Workspace, cn: &str) -> Result<()> {
     let advisory = write_root(ws, &cert, &key)?;
 
     println!("создан {}", ws.root_cert().display());
-    println!("  субъект: {}", subject_cn(&cert).unwrap_or_default());
+    println!("субъект: {}", subject_cn(&cert).unwrap_or_default());
     println!("\nДалее: `rucerts ca add <root.cer>`, затем `rucerts domain add <домен>`.");
     if let Some(note) = advisory {
         println!("\n{note}");
@@ -149,8 +149,8 @@ fn restrict_key_permissions(path: &Path) -> Result<Option<String>> {
     // Full control rather than read: the owner still has to be able to replace this file,
     // and `rucerts root set-cn` rewrites it. Removing inheritance is what makes it private.
     Ok(Some(format!(
-        "примечание: {} наследует права своей папки. Если рабочая область лежит не там, \
-         где читать можете только вы, ограничьте доступ в PowerShell:\n      \
+        "примечание: {} наследует права своей папки. Если к папке имеете доступ, \
+         не только вы, ограничьте доступ в PowerShell:\n      \
          icacls \"{}\" /inheritance:r /grant:r \"$($env:USERNAME):F\"",
         path.display(),
         path.display()
@@ -456,12 +456,12 @@ fn stage_only(ws: &Workspace, no_artifacts: bool) -> Result<()> {
 /// Prints what a generation run produced.
 fn report_staged(staged: &stage::Staged) {
     println!(
-        "созданы файлы для установки, корней: {}, домены: {}",
+        "созданы файлы для установки, корневых сертификатов: {}, домены: {}",
         staged.roots,
         staged.domains.join(", ")
     );
-    println!("  в {}", staged.dir.display());
-    println!("\nПовторный импорт в том хранилище, которым вы пользуетесь:");
+    println!("в {}", staged.dir.display());
+    println!("\nИмпорт сертификатов:");
     println!("  certmgr.msc : запустите install-certs.ps1 ещё раз (он заменит старые копии)");
     println!(
         "  политика    : выполните constrained-ca-policy.reg от админа, перезапустите Chrome/Edge"

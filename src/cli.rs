@@ -120,7 +120,7 @@ pub enum Command {
     /// 1. Создать локальный корневой сертификат и конфигурацию.
     Init {
         /// Common Name локального корня.
-        #[arg(long, default_value = "!Корень в обход рос. сертификатов")]
+        #[arg(long, default_value = "!Root to bypass Russian certificates")]
         cn: String,
     },
     /// 2. Управление корневыми сертификатами УЦ.
