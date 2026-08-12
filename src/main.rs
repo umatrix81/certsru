@@ -96,7 +96,7 @@ fn init(ws: &Workspace, cn: &str) -> Result<()> {
 
     println!("создан {}", ws.root_cert().display());
     println!("CN: {}", subject_cn(&cert).unwrap_or_default());
-    println!("\nДалее:\n `rucerts ca add <root.cer>`,\n затем\n `rucerts domain add <домен>`.");
+    println!("\nДалее:\n `rucerts ca add <root.cer>`,\nзатем\n `rucerts domain add <домен>`.");
     if let Some(note) = advisory {
         println!("\n{note}");
     }
@@ -464,7 +464,7 @@ fn report_staged(staged: &stage::Staged) {
     );
     println!("в {}", staged.dir.display());
     println!("\nИмпорт сертификатов:");
-    println!("  certmgr.msc : запустите install-certs.ps1 ещё раз (он заменит старые копии)");
+    println!("  certmgr.msc : запустите install-certs.ps1 (он заменит старые копии если были)");
     println!(
         "  политика    : выполните constrained-ca-policy.reg от админа, перезапустите Chrome/Edge"
     );
