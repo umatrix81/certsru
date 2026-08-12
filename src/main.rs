@@ -61,7 +61,7 @@ fn run() -> Result<()> {
             let roots = roots::list(&ws)?;
             anyhow::ensure!(
                 !roots.is_empty(),
-                "в roots/ нет корней -- добавьте командой `rucerts ca add`"
+                "в roots/ нет корневых сертификатов -- добавьте командой `rucerts ca add`"
             );
             let report = verify::run(&ws, &cfg, &roots)?;
             println!("\nИтог");
@@ -95,8 +95,8 @@ fn init(ws: &Workspace, cn: &str) -> Result<()> {
     let advisory = write_root(ws, &cert, &key)?;
 
     println!("создан {}", ws.root_cert().display());
-    println!("субъект: {}", subject_cn(&cert).unwrap_or_default());
-    println!("\nДалее: `rucerts ca add <root.cer>`, затем `rucerts domain add <домен>`.");
+    println!("CN: {}", subject_cn(&cert).unwrap_or_default());
+    println!("\nДалее:\n `rucerts ca add <root.cer>`,\n затем\n `rucerts domain add <домен>`.");
     if let Some(note) = advisory {
         println!("\n{note}");
     }
@@ -109,12 +109,14 @@ fn write_root(
     cert: &openssl::x509::X509,
     key: &openssl::pkey::PKey<openssl::pkey::Private>,
 ) -> Result<Option<String>> {
-    std::fs::write(ws.root_cert(), cert.to_pem().context("кодирование корня")?)
-        .with_context(|| format!("запись {}", ws.root_cert().display()))?;
+    std::fs::write(
+        ws.root_cert(),
+        cert.to_pem().context("генерация корневого сертификата")?,
+    )
+    .with_context(|| format!("запись {}", ws.root_cert().display()))?;
     std::fs::write(
         ws.root_key(),
-        key.private_key_to_pem_pkcs8()
-            .context("кодирование ключа")?,
+        key.private_key_to_pem_pkcs8().context("генерация ключа")?,
     )
     .with_context(|| format!("запись {}", ws.root_key().display()))?;
     restrict_key_permissions(&ws.root_key())
@@ -150,7 +152,7 @@ fn restrict_key_permissions(path: &Path) -> Result<Option<String>> {
     // and `rucerts root set-cn` rewrites it. Removing inheritance is what makes it private.
     Ok(Some(format!(
         "примечание: {} наследует права своей папки. Если к папке имеете доступ, \
-         не только вы, ограничьте доступ в PowerShell:\n      \
+         не только вы, ограничьте доступ в PowerShell:\n   \
          icacls \"{}\" /inheritance:r /grant:r \"$($env:USERNAME):F\"",
         path.display(),
         path.display()
@@ -178,7 +180,7 @@ fn domain(ws: &Workspace, action: &DomainAction, no_artifacts: bool) -> Result<(
             for raw in domains {
                 let host = host_of(raw);
                 if cfg.covers(&host) {
-                    println!("пропуск  {host} (уже внутри разрешённого поддерева)");
+                    println!("пропуск  {host} (уже в списке разрешенных)");
                 } else {
                     cfg.constraints.permitted_dns.push(host.clone());
                     println!("добавлен {host}");
@@ -265,7 +267,7 @@ fn ca(ws: &Workspace, action: &CaAction, no_artifacts: bool) -> Result<()> {
             for root in list {
                 println!("{}", root.name);
                 println!(
-                    "    субъект  : {}",
+                    "    CN       : {}",
                     subject_cn(&root.cert).unwrap_or_default()
                 );
                 println!("    истекает : {}", root.cert.not_after());
@@ -355,13 +357,13 @@ fn root(ws: &Workspace, action: &RootAction, no_artifacts: bool) -> Result<()> {
     if ws.root_cert().exists() {
         let current = load_cert(&ws.root_cert())?;
         println!(
-            "текущий корень : {}",
+            "текущий корневой сертификат : {}",
             subject_cn(&current).unwrap_or_default()
         );
     }
-    println!("новый корень   : {cn}");
+    println!("новый корневой сертификат   : {cn}");
     println!("\nБудет создана новая пара ключей и переподписаны все кросс-сертификаты.");
-    println!("Все хранилища доверия со старым корнем придётся обновить.");
+    println!("Все хранилища доверия со старым корневым сертификатом придётся обновить.");
 
     if !yes && !confirm()? {
         anyhow::bail!("отменено");
@@ -376,7 +378,7 @@ fn root(ws: &Workspace, action: &RootAction, no_artifacts: bool) -> Result<()> {
 
     resign_and_stage(ws, &cfg, no_artifacts)?;
     println!(
-        "\nНужен повторный импорт. СТАРЫЙ корень теперь ни к чему не привязан; удалите его \
+        "\nНужен повторный импорт. СТАРЫЙ корневой сертификат теперь ни к чему не привязан; удалите его \
          везде, где он был доверенным."
     );
     if let Some(note) = advisory {
